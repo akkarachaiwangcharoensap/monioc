@@ -6,7 +6,6 @@ This is an experimental “vibe-coding” project built with Copilot Opus, Sonne
 
 **Free, open-source grocery price tracking.**
 
-[![Latest Release](https://img.shields.io/github/v/release/your-org/monioc-os)](https://github.com/your-org/monioc-os/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---
@@ -23,27 +22,13 @@ This is an experimental “vibe-coding” project built with Copilot Opus, Sonne
 - **Custom categories** — organise receipts your way
 - **Fully offline** — all data stored locally, no account required
 - **Cross-platform** — macOS, Windows, Linux
-
----
-
-## Download
-
-Get the latest pre-built binary for your platform from the [Releases page](https://github.com/your-org/monioc-os/releases/latest):
-
-| Platform | File |
-|---|---|
-| macOS (Apple Silicon) | `Monioc_aarch64.dmg` |
-| macOS (Intel) | `Monioc_x64.dmg` |
-| Windows | `Monioc-setup.exe` |
-| Linux | `monioc.AppImage` |
-
 ---
 
 ## Run from Source
 
 ```bash
-git clone https://github.com/your-org/monioc-os.git
-cd monioc-os
+git clone git@github.com:akkarachaiwangcharoensap/monioc.git
+cd monioc
 npm install
 npm run dev
 ```
@@ -106,28 +91,6 @@ cd app/src-tauri && python3 -m unittest discover -s . -p 'test_*.py' -v
 ```bash
 npm run build
 ```
-
-Output is placed in `app/src-tauri/target/release/bundle/`.
-
-### Cross-platform (all targets)
-
-Cross-platform builds (macOS aarch64, macOS x86_64, Windows, Linux) run on GitHub Actions via the release workflow. To trigger a release build:
-
-1. Tag a commit: `git tag v0.x.y && git push origin v0.x.y`
-2. The [release workflow](.github/workflows/release.yml) builds all four platform targets and uploads them to GitHub Releases.
-
-Platform requirements for local builds:
-
-| Target | Build machine required |
-|---|---|
-| macOS (Apple Silicon) | macOS with Apple Silicon |
-| macOS (Intel) | macOS with Intel or Apple Silicon + Rosetta |
-| Windows | Windows 10/11 |
-| Linux | Linux (Ubuntu 22.04+ recommended) |
-
-See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) for per-platform system dependencies.
-
----
 
 ## Data Source
 
