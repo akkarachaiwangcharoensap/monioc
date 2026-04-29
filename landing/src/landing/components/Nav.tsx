@@ -27,12 +27,12 @@ export default function Nav(): React.ReactElement {
 						<i className="fab fa-github text-[13px]" aria-hidden="true" />
 						GitHub
 					</a>
-					<a
+					{/* <a
 						href="#download"
 						className="rounded-full bg-slate-900 px-3.5 py-1.5 text-[13px] font-semibold text-white transition-colors hover:bg-slate-800"
 					>
 						Download Free
-					</a>
+					</a> */}
 				</div>
 			</div>
 		</nav>
