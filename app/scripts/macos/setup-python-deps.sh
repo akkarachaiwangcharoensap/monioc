@@ -34,7 +34,7 @@ APP_BUNDLE_ID="com.monioc-app"
 APP_DATA_DIR="$HOME/Library/Application Support/$APP_BUNDLE_ID"
 APP_CACHE_DIR="$HOME/Library/Caches/$APP_BUNDLE_ID"
 VENV_DIR="$APP_CACHE_DIR/venv"
-REQUIREMENTS="$ROOT_DIR/requirements.txt"
+REQUIREMENTS="$ROOT_DIR/data/requirements.txt"
 HASH_FILE="$VENV_DIR/.requirements-hash"
 PYTHON_BIN="python3"
 
@@ -53,19 +53,37 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ── Sanity checks ─────────────────────────────────────────────────────────────
-if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
-  echo "Python not found: $PYTHON_BIN" >&2
-  echo "Install Python 3.11+ from https://www.python.org/downloads/ and rerun." >&2
-  exit 1
+_python_meets_min() {
+  local bin="$1"
+  command -v "$bin" >/dev/null 2>&1 || return 1
+  local ver major minor
+  ver="$("$bin" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'  2>/dev/null)" || return 1
+  major="${ver%%.*}"; minor="${ver#*.}"
+  [[ "$major" -gt 3 ]] || { [[ "$major" -eq 3 ]] && [[ "$minor" -ge 11 ]]; }
+}
+
+# If the requested interpreter is too old, search for a suitable one.
+if ! _python_meets_min "$PYTHON_BIN"; then
+  FOUND_PYTHON=""
+  for candidate in python3.13 python3.12 python3.11 \
+                   /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3.12 /opt/homebrew/bin/python3.11 \
+                   /usr/local/bin/python3.13 /usr/local/bin/python3.12 /usr/local/bin/python3.11; do
+    if _python_meets_min "$candidate"; then
+      FOUND_PYTHON="$candidate"
+      break
+    fi
+  done
+  if [[ -z "$FOUND_PYTHON" ]]; then
+    PYTHON_VERSION="$("$PYTHON_BIN" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo 'unknown')"
+    echo "Python 3.11 or newer is required (found $PYTHON_VERSION). Aborting." >&2
+    echo "Install Python 3.11+ from https://www.python.org/downloads/ and rerun." >&2
+    exit 1
+  fi
+  echo "[setup-python-deps] Default python3 is too old — using $FOUND_PYTHON instead."
+  PYTHON_BIN="$FOUND_PYTHON"
 fi
 
 PYTHON_VERSION="$("$PYTHON_BIN" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
-PYTHON_MAJOR="${PYTHON_VERSION%%.*}"
-PYTHON_MINOR="${PYTHON_VERSION#*.}"
-if [[ "$PYTHON_MAJOR" -lt 3 ]] || { [[ "$PYTHON_MAJOR" -eq 3 ]] && [[ "$PYTHON_MINOR" -lt 11 ]]; }; then
-  echo "Python 3.11 or newer is required (found $PYTHON_VERSION). Aborting." >&2
-  exit 1
-fi
 
 if [[ ! -f "$REQUIREMENTS" ]]; then
   echo "requirements.txt not found at: $REQUIREMENTS" >&2

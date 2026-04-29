@@ -69,7 +69,6 @@ export const JobService = {
             receiptId: spec.receiptId,
             withAutoCat: spec.withAutoCat,
             categories: spec.categories,
-            tabId: spec.tabId,
         });
         registerJob(jobKey, spec.tabId ?? null);
         return jobKey;
@@ -82,7 +81,6 @@ export const JobService = {
             items: spec.items,
             categories: spec.categories,
             data: spec.data,
-            tabId: spec.tabId,
         });
         registerJob(jobKey, spec.tabId ?? null);
         return jobKey;
