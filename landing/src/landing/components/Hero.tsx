@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type React from 'react';
 import DemoAppWindow from '../DemoAppWindow';
 
-const GITHUB_URL = process.env.NEXT_PUBLIC_GITHUB_URL ?? 'https://github.com/your-org/monioc';
+const GITHUB_URL = process.env.NEXT_PUBLIC_GITHUB_URL ?? 'https://github.com/akkarachaiwangcharoensap/monioc';
 const RELEASES_URL = `${GITHUB_URL}/releases/latest`;
 
 export default function Hero(): React.ReactElement {

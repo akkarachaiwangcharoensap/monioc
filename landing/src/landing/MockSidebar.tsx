@@ -100,7 +100,7 @@ export default function MockSidebar({ activePage, onNavigate, collapsed = false 
 			<div className={collapsed ? 'px-2 py-2' : 'px-4 py-2.5'}>
 				<div className="flex items-center justify-center">
 					<Image
-						src="/monioc-app.png"
+						src="/monioc/monioc-app.png"
 						alt="Monioc logo"
 						width={32}
 						height={32}

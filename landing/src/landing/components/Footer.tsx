@@ -8,7 +8,7 @@ export default function Footer(): React.ReactElement {
 			<div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
 				<div className="flex flex-col items-center justify-between gap-5 sm:flex-row">
 					<div className="flex items-center gap-1">
-						<img src="/monioc-app.png" alt="Monioc logo" className="h-7 w-7 flex-shrink-0 rounded-lg object-contain" />
+						<img src="/monioc/monioc-app.png" alt="Monioc logo" className="h-7 w-7 flex-shrink-0 rounded-lg object-contain" />
 						<span className="text-sm font-bold text-slate-700" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
 							Monioc
 						</span>
