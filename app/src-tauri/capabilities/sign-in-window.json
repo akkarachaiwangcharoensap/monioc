@@ -1,0 +1,10 @@
+{
+  "$schema": "../../node_modules/@tauri-apps/cli/schema/acl/capability.schema.json",
+  "identifier": "sign-in-window",
+  "description": "Minimal permissions for the sign-in popup window (monioc-web loaded in a Tauri WebviewWindow).",
+  "local": true,
+  "windows": ["monioc-sign-in"],
+  "permissions": [
+    "core:event:allow-emit"
+  ]
+}

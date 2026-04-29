@@ -1,0 +1,136 @@
+/* Third-party style overrides for react-date-picker.
+   Uses CSS Modules for isolation; :global() targets third-party class names. */
+
+.wrapper {
+	--rdp-violet-700: #6d28d9;
+	--rdp-violet-600: #7c3aed;
+	--rdp-violet-200: #ddd6fe;
+	--rdp-violet-100: #ede9fe;
+	--rdp-slate-50: #f8fafc;
+	--rdp-slate-100: #f1f5f9;
+	--rdp-slate-200: #e2e8f0;
+	--rdp-slate-300: #cbd5e1;
+	--rdp-slate-400: #94a3b8;
+	--rdp-slate-700: #334155;
+}
+
+.wrapper :global(.react-date-picker) {
+	font-size: 0.75rem;
+	color: var(--rdp-slate-700);
+}
+
+.wrapper :global(.react-date-picker__wrapper) {
+	border: 1px solid var(--rdp-slate-300);
+	border-radius: 9999px;
+	background: #fff;
+	min-height: 28px;
+	padding: 0 0.5rem;
+	display: flex;
+	align-items: center;
+}
+
+.wrapper :global(.react-date-picker__wrapper):hover {
+	border-color: #cbd5e1;
+}
+
+.wrapper :global(.react-date-picker--open .react-date-picker__wrapper),
+.wrapper :global(.react-date-picker__wrapper):focus-within {
+	border-color: var(--rdp-violet-200);
+	box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.28);
+}
+
+.wrapper :global(.react-date-picker__inputGroup) {
+	color: var(--rdp-slate-700);
+	font-size: 0.75rem;
+	min-width: 0;
+}
+
+.wrapper :global(.react-date-picker__inputGroup__input) {
+	border-radius: 0.25rem;
+	min-width: 0.9ch;
+	color: var(--rdp-slate-700);
+}
+
+.wrapper :global(.react-date-picker__inputGroup__input):focus {
+	background: var(--rdp-slate-50);
+	outline: none;
+}
+
+.wrapper :global(.react-date-picker__inputGroup__divider),
+.wrapper :global(.react-date-picker__inputGroup__leadingZero) {
+	color: var(--rdp-slate-400);
+}
+
+.wrapper :global(.react-date-picker__button) {
+	color: var(--rdp-slate-400);
+	padding: 0 0.25rem;
+}
+
+.wrapper :global(.react-date-picker__button):enabled:hover,
+.wrapper :global(.react-date-picker__button):enabled:focus {
+	color: var(--rdp-violet-600);
+}
+
+.wrapper :global(.react-date-picker__button) svg {
+	width: 12px;
+	height: 12px;
+}
+
+.wrapper :global(.react-date-picker__calendar) {
+	z-index: 40;
+	margin-top: 0.35rem;
+}
+
+.wrapper :global(.react-calendar) {
+	border: 1px solid var(--rdp-slate-200);
+	border-radius: 1rem;
+	overflow: hidden;
+	box-shadow: 0 16px 30px rgba(15, 23, 42, 0.1);
+	font-family: inherit;
+}
+
+.wrapper :global(.react-calendar__navigation) {
+	background: #fff;
+	border-bottom: 1px solid var(--rdp-slate-100);
+}
+
+.wrapper :global(.react-calendar__navigation) button:enabled:hover,
+.wrapper :global(.react-calendar__navigation) button:enabled:focus {
+	background: var(--rdp-violet-100);
+	color: var(--rdp-violet-700);
+}
+
+.wrapper :global(.react-calendar__month-view__weekdays) {
+	text-transform: uppercase;
+	font-size: 0.67rem;
+	letter-spacing: 0.04em;
+	color: var(--rdp-slate-400);
+}
+
+.wrapper :global(.react-calendar__tile) {
+	border-radius: 0.5rem;
+}
+
+.wrapper :global(.react-calendar__tile):enabled:hover,
+.wrapper :global(.react-calendar__tile):enabled:focus {
+	background: var(--rdp-violet-100);
+	color: var(--rdp-violet-700);
+}
+
+.wrapper :global(.react-calendar__tile--now) {
+	background: #ecfdf5;
+	color: #065f46;
+	font-weight: 700;
+}
+
+.wrapper :global(.react-calendar__tile--active) {
+	background: var(--rdp-violet-600);
+	color: #fff;
+}
+
+.wrapper :global(.react-date-picker__clear-button) {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0 0.2rem;
+}

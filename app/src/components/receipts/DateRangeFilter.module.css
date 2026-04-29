@@ -1,0 +1,162 @@
+/* Third-party style overrides for @wojtekmaj/react-datetimerange-picker.
+   Uses CSS Modules for isolation; :global() targets third-party class names. */
+
+.wrapper {
+	--rdp-violet-700: #6d28d9;
+	--rdp-violet-600: #7c3aed;
+	--rdp-violet-200: #ddd6fe;
+	--rdp-violet-100: #ede9fe;
+	--rdp-slate-50: #f8fafc;
+	--rdp-slate-100: #f1f5f9;
+	--rdp-slate-200: #e2e8f0;
+	--rdp-slate-300: #cbd5e1;
+	--rdp-slate-400: #94a3b8;
+	--rdp-slate-700: #334155;
+}
+
+.wrapper :global(.react-datetimerange-picker) {
+	font-size: 0.875rem;
+	color: var(--rdp-slate-700);
+}
+
+.wrapper :global(.react-datetimerange-picker__wrapper) {
+	border: 1px solid var(--rdp-slate-300);
+	border-radius: 9999px;
+	background: #fff;
+	min-height: 42px;
+	padding: 0 0.65rem;
+}
+
+.wrapper :global(.react-datetimerange-picker__wrapper):hover {
+	border-color: #cbd5e1;
+}
+
+.wrapper :global(.react-datetimerange-picker--open .react-datetimerange-picker__wrapper),
+.wrapper :global(.react-datetimerange-picker__wrapper):focus-within {
+	border-color: var(--rdp-violet-200);
+	box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.28);
+}
+
+.wrapper :global(.react-datetimerange-picker__inputGroup) {
+	color: var(--rdp-slate-700);
+}
+
+.wrapper :global(.react-datetimerange-picker__inputGroup__input) {
+	border-radius: 0.35rem;
+	min-width: 0.9ch;
+}
+
+.wrapper :global(.react-datetimerange-picker__inputGroup__input):focus {
+	background: var(--rdp-slate-50);
+	outline: none;
+}
+
+.wrapper :global(.react-datetimerange-picker__button) {
+	color: var(--rdp-slate-400);
+}
+
+.wrapper :global(.react-datetimerange-picker__button):enabled:hover,
+.wrapper :global(.react-datetimerange-picker__button):enabled:focus {
+	color: var(--rdp-violet-600);
+	background: var(--rdp-violet-100);
+}
+
+.wrapper :global(.react-datetimerange-picker__calendar) {
+	z-index: 40;
+	margin-top: 0.35rem;
+}
+
+.wrapper :global(.react-calendar) {
+	border: 1px solid var(--rdp-slate-200);
+	border-radius: 1rem;
+	overflow: hidden;
+	box-shadow: 0 16px 30px rgba(15, 23, 42, 0.1);
+	font-family: inherit;
+}
+
+.wrapper :global(.react-calendar__navigation) {
+	background: #fff;
+	border-bottom: 1px solid var(--rdp-slate-100);
+}
+
+.wrapper :global(.react-calendar__navigation) button:enabled:hover,
+.wrapper :global(.react-calendar__navigation) button:enabled:focus {
+	background: var(--rdp-violet-100);
+	color: var(--rdp-violet-700);
+}
+
+.wrapper :global(.react-calendar__month-view__weekdays) {
+	text-transform: uppercase;
+	font-size: 0.67rem;
+	letter-spacing: 0.04em;
+	color: var(--rdp-slate-400);
+}
+
+.wrapper :global(.react-calendar__tile) {
+	border-radius: 0.5rem;
+	margin: 2px;
+}
+
+.wrapper :global(.react-calendar__tile):enabled:hover,
+.wrapper :global(.react-calendar__tile):enabled:focus {
+	background: var(--rdp-violet-100);
+	color: var(--rdp-violet-700);
+}
+
+.wrapper :global(.react-calendar__tile--now) {
+	background: #ecfdf5;
+	color: #065f46;
+	font-weight: 700;
+}
+
+.wrapper :global(.react-calendar__tile--active),
+.wrapper :global(.react-calendar__tile--rangeStart),
+.wrapper :global(.react-calendar__tile--rangeEnd) {
+	background: var(--rdp-violet-600);
+	color: #fff;
+}
+
+.wrapper :global(.react-calendar__tile--hasActive) {
+	background: #ddd6fe;
+}
+
+/* ── Clear button — circular × ───────────────────────────────────────── */
+.wrapper :global(.react-datetimerange-picker__clear-button) {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.4rem;
+	height: 1.4rem;
+	border-radius: 9999px;
+	padding: 0;
+	transition: background-color 0.15s, color 0.15s;
+}
+
+.wrapper :global(.react-datetimerange-picker__clear-button):enabled:hover,
+.wrapper :global(.react-datetimerange-picker__clear-button):enabled:focus {
+	background: var(--rdp-slate-200);
+	color: var(--rdp-slate-700);
+}
+
+.wrapper :global(.react-datetimerange-picker__clear-button) svg {
+	width: 0.6rem;
+	height: 0.6rem;
+}
+
+/* ── Calendar button — softer appearance ─────────────────────────────── */
+.wrapper :global(.react-datetimerange-picker__calendar-button) {
+	opacity: 0.55;
+	transition: opacity 0.15s;
+}
+
+.wrapper :global(.react-datetimerange-picker__calendar-button) svg {
+	width: 0.95rem;
+	height: 0.95rem;
+}
+
+.wrapper :global(.react-datetimerange-picker__calendar-button):enabled:hover,
+.wrapper :global(.react-datetimerange-picker__calendar-button):enabled:focus {
+	background: var(--rdp-violet-100);
+	color: var(--rdp-violet-600);
+	opacity: 1;
+}

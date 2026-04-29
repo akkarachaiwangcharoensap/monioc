@@ -1,0 +1,65 @@
+# Dependencies
+node_modules/
+
+# Rust build artifacts
+target/
+app/src-tauri/target/
+
+# Build output
+dist/
+build/
+out/
+.next/
+app/build/
+landing/out/
+landing/.next/
+
+# Tauri generated
+app/src-tauri/gen/
+
+# Environment files (never commit secrets)
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# macOS
+.DS_Store
+*.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Test output
+coverage/
+playwright-report/
+test-results/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# SQLite databases (generated at runtime)
+*.sqlite3
+!app/src-tauri/receipts.sqlite3
+
+# Tauri bundle cache
+app/src-tauri/.cargo-lock

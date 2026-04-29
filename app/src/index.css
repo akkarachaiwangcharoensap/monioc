@@ -1,0 +1,173 @@
+/* Tailwind CSS v4 — processed at build time via @tailwindcss/vite. */
+@import "tailwindcss";
+
+/* Global base styles — component-level styles use Tailwind utility classes. */
+/* Window rounding (html/body/root) is handled in index.html <style> to avoid
+   any Tailwind or Vite build-step interference. */
+
+/* Prevent the html/body from ever scrolling. All page scrolling is handled by
+   the <main overflow-y-auto> container inside AppLayout. Without this, macOS
+   WKWebView can trigger a body-level layout event when portal DOM nodes change
+   (e.g. the "Saved" toast), which resets the scroll container to the top. */
+/* html,
+body {
+  overflow: hidden;
+  height: 100%;
+} */
+
+body {
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    'Roboto',
+    'Oxygen',
+    'Ubuntu',
+    'Cantarell',
+    'Fira Sans',
+    'Droid Sans',
+    'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+}
+
+button {
+  cursor: pointer;
+}
+
+/* ── react-sortablejs drag states ─────────────────────────────────────────── */
+
+/* Ghost: the placeholder slot that shows where the dragged item will land */
+.sortable-ghost {
+  opacity: 0.35;
+  background-color: #ede9fe; /* violet-100 */
+  border-color: #7c3aed !important; /* violet-600 */
+  border-radius: 0.75rem;
+}
+
+/* Chosen: the element being actively dragged */
+.sortable-chosen {
+  box-shadow: none;
+  opacity: 0.85;
+}
+
+/* Fallback element used while dragging when native DnD is disabled. */
+.sortable-fallback {
+  border-radius: 0.75rem;
+  border: 1px solid #c4b5fd;
+  background-color: #f5f3ff;
+  box-shadow: none;
+  opacity: 0.95;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* Always reserve vertical scrollbar gutter inside the main scroll container
+   so content width never shifts when the scrollbar appears/disappears.
+   Placed on <main> (the actual scroller), NOT on html — putting it on html
+   caused WKWebView to reserve a viewport-level gutter whenever child content
+   overflowed, shrinking the app layout by ~15 px and creating a right-edge gap. */
+
+/* Flat visual language: no gradients and no shadows. */
+[class*='bg-gradient'] {
+  background-image: none !important;
+}
+
+* {
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+/* ── react-select styling for spreadsheet context ──────────────────────────── */
+
+.react-select-tiny .rs__control {
+  background-color: transparent;
+  border: none;
+  min-height: auto;
+  padding: 0;
+}
+
+.react-select-tiny .rs__control--is-focused {
+  border-color: #e2e8f0;
+  box-shadow: 0 0 0 1px #e2e8f0;
+}
+
+.react-select-tiny .rs__menu {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+}
+
+.react-select-tiny .rs__option {
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.react-select-tiny .rs__option--is-focused {
+  background-color: #f9fafb;
+}
+
+.react-select-tiny .rs__option--is-selected {
+  background-color: #f1f5f9;
+  color: #334155;
+}
+
+.react-select-tiny .rs__single-value {
+  margin: 0;
+  padding: 0;
+  font-size: 11.5px;
+  color: #475569;
+}
+
+.react-select-tiny .rs__value-container {
+  padding: 0;
+  margin: 0;
+}
+
+.react-select-tiny .rs__indicator-separator {
+  display: none;
+}
+
+.react-select-tiny .rs__dropdown-indicator {
+  padding: 0 4px;
+  font-size: 10px;
+  color: #94a3b8;
+  cursor: pointer;
+}
+
+.react-select-tiny .rs__dropdown-indicator:hover {
+  background-color: #f1f5f9;
+  color: #475569;
+  border-radius: 2px;
+}
+
+/* react-select sets min-width: 2px inline on the <input> element via its internal
+   auto-sizer. Override with !important so the search field isn't invisible on first open. */
+.react-select-tiny .rs__input {
+  min-width: 60px !important;
+}
+
+/* Hide scrollbar while keeping scroll functionality */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Recharts chart focus and tooltip overrides */
+.recharts-surface:focus,
+.recharts-layer.recharts-pie:focus,
+.recharts-sector,
+.recharts-sector:focus {
+  outline: none !important;
+}
+
+.recharts-tooltip-wrapper {
+  z-index: 20 !important;
+}
+
+

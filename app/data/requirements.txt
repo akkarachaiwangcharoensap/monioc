@@ -1,0 +1,26 @@
+pandas>=2.0.0
+# Keep NumPy 1.26.x for broad Paddle compatibility in this environment.
+numpy==1.26.4
+# Progress bars for scan/categorize pipeline
+tqdm>=4.66.0
+# Receipt scanner dependencies
+# paddlepaddle is the backend; install the CPU or GPU wheel for your platform:
+#   CPU (macOS/Linux):  pip install paddlepaddle
+#   GPU (CUDA 12):      pip install paddlepaddle-gpu
+paddlepaddle>=3.0.0
+# Use latest PaddleOCR (standard OCR pipeline, not VL doc parser).
+paddleocr>=3.4.0
+pillow>=10.0.0
+
+# LLM inference — backend is chosen automatically based on platform:
+#
+# macOS Apple Silicon: mlx-lm (in-process, unified GPU/CPU memory, ~4.5 GB)
+#   pip install mlx-lm
+mlx-lm>=0.19.0; sys_platform == "darwin"
+
+# Windows / Linux: llama-cpp-python (GGUF, CUDA auto-detected, ~4.9 GB for Q4_K_M)
+#   CPU:   pip install llama-cpp-python
+#   CUDA:  CMAKE_ARGS="-DGGML_CUDA=on" pip install llama-cpp-python --no-binary llama-cpp-python
+llama-cpp-python>=0.3.0; sys_platform != "darwin"
+
+# ollama is the universal fallback on all platforms (must be installed separately).

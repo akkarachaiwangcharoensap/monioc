@@ -1,0 +1,50 @@
+[package]
+name = "monioc"
+version = "0.1.0"
+description = "Expense Tracker, Monioc, a Tauri desktop app"
+authors = []
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary to make the lib name
+# different from the bin name. This is required because Tauri v2 compiles the lib code
+# twice: once for the main application and once for the tests (where lib is reused).
+name = "monioc_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+rusqlite = { version = "0.32", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-opener = "2"
+tauri-plugin-sql = { version = "2", features = ["sqlite"] }
+tauri-plugin-store = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-clipboard-manager = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "bmp", "webp"] }
+kamadak-exif = "0.5"
+zstd = "0.13"
+chrono = { version = "0.4", default-features = false, features = ["serde", "clock"] }
+tokio = { version = "1", features = ["sync", "macros"] }
+tokio-util = "0.7"
+
+# macOS-only: cocoa for NSWindow/NSColor bindings; objc for CALayer msg_send!
+# calls that set the native corner radius on the window content view,
+# eliminating the CSS-antialiased hairline "border" at the window edge.
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa = "0.26"
+objc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt", "sync"] }
