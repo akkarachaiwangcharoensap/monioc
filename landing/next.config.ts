@@ -4,6 +4,8 @@ import type { NextConfig } from "next";
 const tauriShim = "./src/landing/tauri-shim.ts";
 
 const nextConfig: NextConfig = {
+  basePath: "/monioc",
+  assetPrefix: "/monioc/",
   output: "export",
   transpilePackages: ["@monioc/shared"],
   trailingSlash: true,
