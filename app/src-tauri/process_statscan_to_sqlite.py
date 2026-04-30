@@ -218,7 +218,7 @@ class StatCanSQLiteProcessor:
         finally:
             conn.close()
 
-        print(f"\nDone! Processed {len(df)} rows → {output_file}")
+        print(f"\nDone! Processed {len(df)} rows -> {output_file}")
         self._print_summary(df, output_file)
 
     # ── Transform ─────────────────────────────────────────────────────────────
@@ -491,7 +491,7 @@ class StatCanSQLiteProcessor:
         print(f"Unique products     : {df['product_name'].nunique()}")
         print(f"Unique categories   : {df['product_category'].nunique()}")
         print(f"Unique locations    : {df['location'].nunique()}")
-        print(f"Date range          : {df['date'].min()} → {df['date'].max()}")
+        print(f"Date range          : {df['date'].min()} -> {df['date'].max()}")
         print(f"Database size       : {size_mb:.2f} MB")
         print("\nCategory breakdown:")
         for cat, count in df["product_category"].value_counts().head(10).items():
