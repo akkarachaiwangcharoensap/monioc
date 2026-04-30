@@ -331,7 +331,19 @@ async fn run_check_models_script(
         )));
     }
 
-    serde_json::from_str(stdout.trim())
+    // PaddleOCR and huggingface_hub may write extra text to stdout before our
+    // JSON line.  The script always emits exactly one JSON object as its final
+    // line, so find the last non-empty line that starts with '{' or '['.
+    let json_line = stdout
+        .lines()
+        .rev()
+        .find(|l| {
+            let t = l.trim();
+            !t.is_empty() && (t.starts_with('{') || t.starts_with('['))
+        })
+        .unwrap_or(stdout.trim());
+
+    serde_json::from_str(json_line)
         .map_err(|e| AppError::Processing(format!("Invalid model status JSON: {e}")))
 }
 

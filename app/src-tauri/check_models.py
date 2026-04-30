@@ -111,7 +111,13 @@ def _download_ocr_models() -> bool:
         _progress("OCR models downloaded.")
         return True
     except Exception as exc:
-        _progress(f"OCR model download failed: {exc}")
+        _progress(f"OCR model init error: {exc}")
+        # On Windows, PaddleOCR often raises during GPU/DirectX detection even
+        # when the model files downloaded successfully.  Check the disk before
+        # reporting failure so a successful download isn't falsely rejected.
+        if _ocr_models_present():
+            _progress("OCR models verified on disk — treating as downloaded.")
+            return True
         return False
 
 # ── LLM model check ─────────────────────────────────────────────────────────
