@@ -50,12 +50,12 @@ export default function Hero(): React.ReactElement {
 						transitionDelay: '140ms',
 					}}
 				>
-					{/* <a
+					<a
 						href="#download"
 						className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
 					>
 						Download for free
-					</a> */}
+					</a>
 					<a
 						href={GITHUB_URL}
 						target="_blank"
@@ -67,7 +67,7 @@ export default function Hero(): React.ReactElement {
 					</a>
 				</div>
 
-				{/* <div
+				<div
 					id="download"
 					className="mt-6 flex flex-col items-center gap-4 transition-all duration-500 ease-out"
 					style={{
@@ -116,7 +116,7 @@ export default function Hero(): React.ReactElement {
 						</a>
 						{' '}on GitHub
 					</p>
-				</div> */}
+				</div>
 
 				{/* App window preview - interactive demo */}
 				<div
