@@ -135,6 +135,36 @@ _DEFAULT_GGUF_MODEL: str = "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF"
 _DEFAULT_GGUF_FILENAME: str = "*Q4_K_M.gguf"
 """Default GGUF filename glob pattern within the repository."""
 
+_APP_BUNDLE_ID: str = "com.monioc-app"
+
+
+def _llm_local_dir() -> "Path | None":
+    """On Windows, the flat folder where the GGUF file is downloaded directly.
+
+    Using snapshot_download(local_dir=...) avoids creating symlinks, which
+    require Developer Mode on Windows 10/11.  Returns None on other platforms.
+    """
+    if sys.platform != "win32":
+        return None
+    local_app_data = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    return local_app_data / _APP_BUNDLE_ID / "models"
+
+
+def _gguf_file_in_dir(directory: "Path") -> "Path | None":
+    """Return the GGUF file path if it exists in *directory* with size >100 MB."""
+    import fnmatch
+    gguf_pattern = os.environ.get("RECEIPT_LLM_GGUF_FILENAME", _DEFAULT_GGUF_FILENAME)
+    if not directory.is_dir():
+        return None
+    for f in directory.iterdir():
+        if f.is_file() and fnmatch.fnmatch(f.name, gguf_pattern):
+            try:
+                if f.stat().st_size > 100_000_000:
+                    return f
+            except OSError:
+                pass
+    return None
+
 # ─── Progress reporting ───────────────────────────────────────────────────────
 
 
@@ -198,17 +228,15 @@ class _Spinner:
 
 
 def _hf_model_is_cached(repo_id: str) -> bool:
-    """Check if a HuggingFace model is cached locally.
+    """Return True if the model is available locally (Windows flat dir or HF cache)."""
+    # Windows: check the flat local_dir folder.
+    local_dir = _llm_local_dir()
+    if local_dir is not None:
+        return _gguf_file_in_dir(local_dir) is not None
 
-    Parameters:
-        repo_id: HuggingFace repository ID to check (e.g., 'username/model-name').
-
-    Returns:
-        bool: True if the model is already in the local cache, False otherwise.
-    """
+    # macOS / Linux: check HF hub cache.
     try:
         from huggingface_hub import scan_cache_dir  # type: ignore
-
         return any(r.repo_id == repo_id for r in scan_cache_dir().repos)
     except Exception:
         return False
@@ -404,17 +432,29 @@ def _download_hf_model_with_progress(repo_id: str, filename_pattern: str | None 
 
     allow = [filename_pattern] if filename_pattern else None
 
+    # On Windows, download to a flat folder so HF hub never creates symlinks.
+    local_dir = _llm_local_dir()
+    if local_dir is not None:
+        local_dir.mkdir(parents=True, exist_ok=True)
+        _progress(f"  Saving to: {local_dir}")
+    local_dir_arg = str(local_dir) if local_dir is not None else None
+
     # Suppress HF Hub's native tqdm bars (carriage-return noise); we provide progress.
     os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
-    _progress(f"  Downloading model files …")
+    _progress("  Downloading model files …")
     try:
-        snapshot_download(repo_id=repo_id, allow_patterns=allow, tqdm_class=_ProgressTqdm)  # type: ignore[arg-type]
-        _progress(f"  Download complete — model cached locally.")
+        snapshot_download(  # type: ignore[call-arg]
+            repo_id=repo_id,
+            allow_patterns=allow,
+            local_dir=local_dir_arg,
+            tqdm_class=_ProgressTqdm,
+        )
+        _progress("  Download complete — model cached locally.")
     except TypeError:
         # Older huggingface_hub may not accept tqdm_class; fall back silently.
         try:
-            snapshot_download(repo_id=repo_id, allow_patterns=allow)
-            _progress(f"  Download complete — model cached locally.")
+            snapshot_download(repo_id=repo_id, allow_patterns=allow, local_dir=local_dir_arg)
+            _progress("  Download complete — model cached locally.")
         except Exception as exc:
             _progress(f"  Download warning: {exc}")
     except Exception as exc:
@@ -1248,15 +1288,31 @@ def _call_llama_cpp(user_content: str, system_prompt: str | None = None) -> str 
             "  This is a one-time download (~4–5 GB). Subsequent runs load instantly from cache."
         )
         _download_hf_model_with_progress(repo_id, filename_pattern)
+
     try:
         with _Spinner("Loading AI model", interval=5.0):
-            llm = Llama.from_pretrained(
-                repo_id=repo_id,
-                filename=filename_pattern,
-                n_ctx=4096,
-                n_gpu_layers=-1,  # offload all layers to GPU when available; 0 = CPU only
-                verbose=False,
-            )
+            # On Windows the model was downloaded to a flat local_dir folder;
+            # load it directly by path instead of via the HF hub cache.
+            local_dir = _llm_local_dir()
+            if local_dir is not None:
+                model_file = _gguf_file_in_dir(local_dir)
+                if model_file is None:
+                    _progress("AI model file not found in local dir; trying another method …")
+                    return None
+                llm = Llama(
+                    model_path=str(model_file),
+                    n_ctx=4096,
+                    n_gpu_layers=-1,
+                    verbose=False,
+                )
+            else:
+                llm = Llama.from_pretrained(
+                    repo_id=repo_id,
+                    filename=filename_pattern,
+                    n_ctx=4096,
+                    n_gpu_layers=-1,
+                    verbose=False,
+                )
     except Exception as exc:
         _progress("AI model failed to load; trying another method …")
         return None
