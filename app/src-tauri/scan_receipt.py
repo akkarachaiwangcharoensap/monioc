@@ -380,7 +380,7 @@ class _ProgressTqdm:
         _progress(s)
 
 
-def _download_hf_model_with_progress(repo_id: str) -> None:
+def _download_hf_model_with_progress(repo_id: str, filename_pattern: str | None = None) -> None:
     """
     Pre-download a HuggingFace model to the local cache using line-based progress.
 
@@ -388,6 +388,10 @@ def _download_hf_model_with_progress(repo_id: str) -> None:
     per-file download progress reaches the frontend as clean ``_progress()`` lines.
     HF Hub's own tqdm (which uses ``\\r`` carriage-return overwriting) is suppressed
     to avoid garbled output when stderr is piped through Tauri.
+
+    Pass ``filename_pattern`` (e.g. ``"*Q4_K_M.gguf"``) to restrict the download to
+    only the needed quantisation file.  Without it, snapshot_download fetches every
+    file in the repo — for a multi-quant GGUF repo that can exceed 30 GB.
 
     After this call the model is fully cached; the subsequent ``load()`` / ``from_pretrained``
     call will read from disk without re-downloading.
@@ -398,16 +402,18 @@ def _download_hf_model_with_progress(repo_id: str) -> None:
         _progress("  huggingface_hub not available; skipping pre-download.")
         return
 
+    allow = [filename_pattern] if filename_pattern else None
+
     # Suppress HF Hub's native tqdm bars (carriage-return noise); we provide progress.
     os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
     _progress(f"  Downloading model files …")
     try:
-        snapshot_download(repo_id=repo_id, tqdm_class=_ProgressTqdm)  # type: ignore[arg-type]
+        snapshot_download(repo_id=repo_id, allow_patterns=allow, tqdm_class=_ProgressTqdm)  # type: ignore[arg-type]
         _progress(f"  Download complete — model cached locally.")
     except TypeError:
         # Older huggingface_hub may not accept tqdm_class; fall back silently.
         try:
-            snapshot_download(repo_id=repo_id)
+            snapshot_download(repo_id=repo_id, allow_patterns=allow)
             _progress(f"  Download complete — model cached locally.")
         except Exception as exc:
             _progress(f"  Download warning: {exc}")
@@ -1241,7 +1247,7 @@ def _call_llama_cpp(user_content: str, system_prompt: str | None = None) -> str 
         _progress(
             "  This is a one-time download (~4–5 GB). Subsequent runs load instantly from cache."
         )
-        _download_hf_model_with_progress(repo_id)
+        _download_hf_model_with_progress(repo_id, filename_pattern)
     try:
         with _Spinner("Loading AI model", interval=5.0):
             llm = Llama.from_pretrained(

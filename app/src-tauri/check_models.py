@@ -44,16 +44,25 @@ def _is_macos_intel() -> bool:
 
 _DEFAULT_MLX_MODEL = "mlx-community/Ministral-3-8B-Instruct-2512-4bit"
 _DEFAULT_GGUF_MODEL = "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF"
+_DEFAULT_GGUF_FILENAME = "*Q4_K_M.gguf"
 
 # ── Known sizes for progress polling ─────────────────────────────────────────
 
-# Expected total bytes and file counts when fully downloaded.
-# LLM: measured via stat() on blobs dir (~5.63 GB across 13 blob files)
 # OCR: measured via stat() on ~/.paddlex/official_models (~99 MB across 40 files)
-_OCR_EXPECTED_BYTES = 103_400_000   # ~103 MB (slightly more than post-install size)
+_OCR_EXPECTED_BYTES = 103_400_000   # ~103 MB
 _OCR_EXPECTED_FILES = 40
-_LLM_EXPECTED_BYTES = 5_634_000_000  # ~5.63 GB in blobs dir
-_LLM_EXPECTED_FILES = 13             # blob files in HF cache
+
+def _llm_expected_bytes() -> int:
+    """Expected LLM download size for the current platform."""
+    if _is_apple_silicon():
+        return 5_634_000_000  # ~5.63 GB — MLX 4-bit 8B (multiple weight shards + metadata)
+    return 4_920_000_000      # ~4.92 GB — GGUF Q4_K_M single file (Windows / Linux)
+
+def _llm_expected_files() -> int:
+    """Expected number of files in the LLM download for the current platform."""
+    if _is_apple_silicon():
+        return 13  # weight shards + config + tokenizer files
+    return 1       # single .gguf blob
 
 # ── Path helpers ──────────────────────────────────────────────────────────────
 
@@ -136,12 +145,20 @@ def _download_llm_model() -> bool:
         from huggingface_hub import snapshot_download  # type: ignore
         os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
 
+        # MLX repos (Apple Silicon) contain safetensors shards — no .gguf files.
+        # Filtering by a GGUF pattern there would download nothing.
+        if _is_apple_silicon():
+            allow = None
+        else:
+            gguf_filename = os.environ.get("RECEIPT_LLM_GGUF_FILENAME", _DEFAULT_GGUF_FILENAME)
+            allow = [gguf_filename]
+
         try:
             sys.path.insert(0, str(Path(__file__).parent))
             from scan_receipt import _ProgressTqdm  # type: ignore
-            snapshot_download(repo_id=model_id, tqdm_class=_ProgressTqdm)
+            snapshot_download(repo_id=model_id, allow_patterns=allow, tqdm_class=_ProgressTqdm)
         except (ImportError, TypeError, AttributeError):
-            snapshot_download(repo_id=model_id)
+            snapshot_download(repo_id=model_id, allow_patterns=allow)
 
         _progress("AI analysis model downloaded.")
         return True
@@ -181,8 +198,8 @@ def _poll_progress() -> dict:
         if blobs_dir.exists():
             llm_bytes, llm_files = _dir_stats(blobs_dir)
 
-    total_expected = _OCR_EXPECTED_BYTES + _LLM_EXPECTED_BYTES
-    total_files_expected = _OCR_EXPECTED_FILES + _LLM_EXPECTED_FILES
+    total_expected = _OCR_EXPECTED_BYTES + _llm_expected_bytes()
+    total_files_expected = _OCR_EXPECTED_FILES + _llm_expected_files()
 
     return {
         "downloadedBytes": ocr_bytes + llm_bytes,
