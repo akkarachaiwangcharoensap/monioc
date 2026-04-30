@@ -46,8 +46,6 @@ _DEFAULT_MLX_MODEL = "mlx-community/Ministral-3-8B-Instruct-2512-4bit"
 _DEFAULT_GGUF_MODEL = "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF"
 _DEFAULT_GGUF_FILENAME = "*Q4_K_M.gguf"
 
-_APP_BUNDLE_ID = "com.monioc-app"
-
 # ── Known sizes for progress polling ─────────────────────────────────────────
 
 # OCR: measured via stat() on ~/.paddlex/official_models (~99 MB across 40 files)
@@ -77,18 +75,6 @@ def _llm_hf_cache_dir(model_id: str) -> Path:
     safe_name = model_id.replace("/", "--")
     return hf_home / "hub" / f"models--{safe_name}"
 
-def _llm_local_dir() -> Path | None:
-    """On Windows, return the direct download dir for the GGUF file.
-
-    Using snapshot_download(local_dir=...) places the file directly in the
-    folder with no symlinks, avoiding Windows Developer-Mode requirements.
-    Returns None on macOS/Linux — those platforms use the HF hub cache.
-    """
-    if sys.platform != "win32":
-        return None
-    local_app_data = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-    return local_app_data / _APP_BUNDLE_ID / "models"
-
 def _get_llm_model_id() -> str | None:
     """Return the LLM model id for this platform, or None if not applicable."""
     if _is_apple_silicon():
@@ -96,20 +82,6 @@ def _get_llm_model_id() -> str | None:
     elif sys.platform != "darwin":
         return os.environ.get("RECEIPT_LLM_GGUF_MODEL", _DEFAULT_GGUF_MODEL)
     return None  # macOS Intel uses ollama
-
-def _gguf_file_in_dir(directory: Path) -> bool:
-    """Return True if a GGUF file matching the pattern exists with size >100 MB."""
-    import fnmatch
-    gguf_pattern = os.environ.get("RECEIPT_LLM_GGUF_FILENAME", _DEFAULT_GGUF_FILENAME)
-    if not directory.is_dir():
-        return False
-    for f in directory.iterdir():
-        if f.is_file() and fnmatch.fnmatch(f.name, gguf_pattern):
-            try:
-                return f.stat().st_size > 100_000_000
-            except OSError:
-                pass
-    return False
 
 # ── OCR model check ──────────────────────────────────────────────────────────
 
@@ -166,10 +138,10 @@ def _hf_model_is_cached(repo_id: str) -> bool:
         return False
 
 def _llm_gguf_snapshot_present(repo_id: str) -> bool:
-    """Return True if the Q4_K_M blob is resolvable in the HF snapshots tree.
+    """Return True if the Q4_K_M file is resolvable in the HF snapshots tree.
 
-    Handles stale caches where other quants were fetched (before allow_patterns
-    was added) but the Q4_K_M file itself was never downloaded.
+    An old partial download (before allow_patterns was added) may have fetched
+    different quantisation variants but not the Q4_K_M file we actually need.
     """
     import fnmatch
     gguf_pattern = os.environ.get("RECEIPT_LLM_GGUF_FILENAME", _DEFAULT_GGUF_FILENAME)
@@ -183,7 +155,8 @@ def _llm_gguf_snapshot_present(repo_id: str) -> bool:
             if fnmatch.fnmatch(f.name, gguf_pattern):
                 try:
                     target = f.resolve()
-                    return target.exists() and target.stat().st_size > 100_000_000
+                    # Blob must be at least 4 GB to be a complete Q4_K_M download.
+                    return target.exists() and target.stat().st_size > 4_000_000_000
                 except OSError:
                     pass
     return False
@@ -193,16 +166,10 @@ def _llm_model_present() -> bool:
     model_id = _get_llm_model_id()
     if model_id is None:
         return True  # macOS Intel → ollama; report as available
-
-    # Windows: model lives directly in the local_dir folder (no HF symlinks).
-    local_dir = _llm_local_dir()
-    if local_dir is not None:
-        return _gguf_file_in_dir(local_dir)
-
-    # macOS / Linux: use HF hub cache.
     if not _hf_model_is_cached(model_id):
         return False
-    # Also verify the specific quant file is reachable (not just the repo entry).
+    # For GGUF platforms, also verify the specific quantisation file is present
+    # and fully downloaded (not just that the repo entry exists).
     if not _is_apple_silicon():
         return _llm_gguf_snapshot_present(model_id)
     return True
@@ -226,35 +193,17 @@ def _download_llm_model() -> bool:
         # Filtering by a GGUF pattern there would download nothing.
         if _is_apple_silicon():
             allow = None
-            local_dir_arg: str | None = None
         else:
             gguf_filename = os.environ.get("RECEIPT_LLM_GGUF_FILENAME", _DEFAULT_GGUF_FILENAME)
             allow = [gguf_filename]
-            # On Windows, download directly into a flat folder so HF hub never
-            # needs to create symlinks (which require Developer Mode).
-            win_dir = _llm_local_dir()
-            if win_dir is not None:
-                win_dir.mkdir(parents=True, exist_ok=True)
-                _progress(f"  Saving to: {win_dir}")
-                local_dir_arg = str(win_dir)
-            else:
-                local_dir_arg = None
+            _progress(f"  Downloading {gguf_filename} from {model_id} (~4.92 GB) …")
 
         try:
             sys.path.insert(0, str(Path(__file__).parent))
             from scan_receipt import _ProgressTqdm  # type: ignore
-            snapshot_download(
-                repo_id=model_id,
-                allow_patterns=allow,
-                local_dir=local_dir_arg,
-                tqdm_class=_ProgressTqdm,
-            )
+            snapshot_download(repo_id=model_id, allow_patterns=allow, tqdm_class=_ProgressTqdm)
         except (ImportError, TypeError, AttributeError):
-            snapshot_download(
-                repo_id=model_id,
-                allow_patterns=allow,
-                local_dir=local_dir_arg,
-            )
+            snapshot_download(repo_id=model_id, allow_patterns=allow)
 
         _progress("AI analysis model downloaded.")
         return True
@@ -286,16 +235,14 @@ def _poll_progress() -> dict:
     llm_bytes, llm_files = 0, 0
     model_id = _get_llm_model_id()
     if model_id is not None:
-        local_dir = _llm_local_dir()
-        if local_dir is not None:
-            # Windows: files land directly in local_dir.
-            llm_bytes, llm_files = _dir_stats(local_dir)
-        else:
-            # macOS / Linux: count blobs/ only so we don't double-count
-            # snapshots/ symlinks or the incomplete-file suffix.
-            blobs_dir = _llm_hf_cache_dir(model_id) / "blobs"
-            if blobs_dir.exists():
-                llm_bytes, llm_files = _dir_stats(blobs_dir)
+        llm_dir = _llm_hf_cache_dir(model_id)
+        # Count blobs/ only — HF hub writes .incomplete files directly inside
+        # blobs/ while downloading, so stat()-ing blobs/ already captures
+        # in-flight data.  A separate rglob over llm_dir would double-count
+        # the snapshots/ symlinks.
+        blobs_dir = llm_dir / "blobs"
+        if blobs_dir.exists():
+            llm_bytes, llm_files = _dir_stats(blobs_dir)
 
     total_expected = _OCR_EXPECTED_BYTES + _llm_expected_bytes()
     total_files_expected = _OCR_EXPECTED_FILES + _llm_expected_files()
@@ -318,16 +265,10 @@ def _remove_models() -> None:
 
     model_id = _get_llm_model_id()
     if model_id is not None:
-        local_dir = _llm_local_dir()
-        if local_dir is not None:
-            if local_dir.exists():
-                _progress("Removing AI analysis model …")
-                shutil.rmtree(local_dir, ignore_errors=True)
-        else:
-            llm_dir = _llm_hf_cache_dir(model_id)
-            if llm_dir.exists():
-                _progress("Removing AI analysis model …")
-                shutil.rmtree(llm_dir, ignore_errors=True)
+        llm_dir = _llm_hf_cache_dir(model_id)
+        if llm_dir.exists():
+            _progress("Removing AI analysis model …")
+            shutil.rmtree(llm_dir, ignore_errors=True)
 
     _progress("All AI models removed.")
 
