@@ -123,18 +123,57 @@ def _download_ocr_models() -> bool:
 # ── LLM model check ─────────────────────────────────────────────────────────
 
 def _hf_model_is_cached(repo_id: str) -> bool:
+    """Return True if the HF hub repo is present AND has no in-progress blobs."""
     try:
         from huggingface_hub import scan_cache_dir  # type: ignore
-        return any(r.repo_id == repo_id for r in scan_cache_dir().repos)
+        if not any(r.repo_id == repo_id for r in scan_cache_dir().repos):
+            return False
+        # Any .incomplete file means the download was interrupted.
+        blobs_dir = _llm_hf_cache_dir(repo_id) / "blobs"
+        if blobs_dir.is_dir() and any(
+            f.suffix == ".incomplete" for f in blobs_dir.iterdir() if f.is_file()
+        ):
+            return False
+        return True
     except Exception:
         return False
+
+def _llm_gguf_blob_present(repo_id: str) -> bool:
+    """Return True if the GGUF file matching the configured pattern exists in a snapshot.
+
+    An old partial download (before allow_patterns was added) may have fetched
+    different quantisation variants but not the Q4_K_M file we actually need.
+    """
+    import fnmatch
+    gguf_pattern = os.environ.get("RECEIPT_LLM_GGUF_FILENAME", _DEFAULT_GGUF_FILENAME)
+    snapshots_dir = _llm_hf_cache_dir(repo_id) / "snapshots"
+    if not snapshots_dir.is_dir():
+        return False
+    for rev_dir in snapshots_dir.iterdir():
+        if not rev_dir.is_dir():
+            continue
+        for f in rev_dir.iterdir():
+            if fnmatch.fnmatch(f.name, gguf_pattern):
+                try:
+                    target = f.resolve()
+                    # Sanity-check: the blob must be at least 100 MB.
+                    return target.exists() and target.stat().st_size > 100_000_000
+                except OSError:
+                    pass
+    return False
 
 def _llm_model_present() -> bool:
     """Check whether the LLM model for the current platform is cached."""
     model_id = _get_llm_model_id()
     if model_id is None:
         return True  # macOS Intel → ollama; report as available
-    return _hf_model_is_cached(model_id)
+    if not _hf_model_is_cached(model_id):
+        return False
+    # For GGUF platforms, also verify the specific quantisation file is present.
+    # An interrupted old download may have fetched other quants but not Q4_K_M.
+    if not _is_apple_silicon():
+        return _llm_gguf_blob_present(model_id)
+    return True
 
 def _download_llm_model() -> bool:
     """Download the LLM model for the current platform."""
@@ -142,7 +181,7 @@ def _download_llm_model() -> bool:
     if model_id is None:
         return True
 
-    if _hf_model_is_cached(model_id):
+    if _llm_model_present():
         _progress("LLM model already cached.")
         return True
 

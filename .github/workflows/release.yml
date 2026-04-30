@@ -51,6 +51,12 @@ jobs:
       - name: Build app
         working-directory: app
         run: npx tauri build
+        env:
+          # Ad-hoc signing ("-") prevents macOS Gatekeeper from reporting the
+          # app as "damaged" when downloaded.  Users will still see an
+          # "unidentified developer" prompt the first time they open it;
+          # they can bypass it with right-click → Open.
+          APPLE_SIGNING_IDENTITY: "-"
 
       - name: Stage release asset
         run: cp app/src-tauri/target/release/bundle/dmg/*.dmg Monioc.dmg
