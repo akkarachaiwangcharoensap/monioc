@@ -86,7 +86,7 @@ pub(crate) fn resolve_with_env(
         }
     }
 
-    "python3".to_string()
+    if cfg!(target_os = "windows") { "python".to_string() } else { "python3".to_string() }
 }
 
 #[cfg(test)]
@@ -113,12 +113,14 @@ mod tests {
             &None,
             None,
         );
-        assert_eq!(result, "python3");
+        let expected = if cfg!(target_os = "windows") { "python" } else { "python3" };
+        assert_eq!(result, expected);
     }
 
     #[test]
-    fn fallback_is_python3() {
+    fn fallback_is_platform_python() {
         let result = resolve_with_env(Path::new("/nowhere/script.py"), &None, &None, None);
-        assert_eq!(result, "python3");
+        let expected = if cfg!(target_os = "windows") { "python" } else { "python3" };
+        assert_eq!(result, expected);
     }
 }

@@ -30,7 +30,7 @@ def get_venv_python(root_dir: Path) -> str:
             return str(p)
     elif _system == "Windows":
         base = os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local")
-        p = Path(base) / APP_BUNDLE_ID / "cache" / "venv" / "Scripts" / "python.exe"
+        p = Path(base) / APP_BUNDLE_ID / "venv" / "Scripts" / "python.exe"
         if p.exists():
             return str(p)
     else:

@@ -33,7 +33,9 @@ def get_cache_dir() -> Path:
         return Path.home() / "Library" / "Caches" / APP_BUNDLE_ID
     if _system == "Windows":
         base = os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local")
-        return Path(base) / APP_BUNDLE_ID / "cache"
+        # Tauri's app_cache_dir() on Windows = %LOCALAPPDATA%/<bundle-id> (no "cache" subdir).
+        # Keep this in sync so interpreter.rs finds the venv at app_cache_dir/venv.
+        return Path(base) / APP_BUNDLE_ID
     return Path.home() / ".cache" / APP_BUNDLE_ID
 
 

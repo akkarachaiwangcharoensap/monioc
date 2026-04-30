@@ -27,6 +27,7 @@ import { composeProviders } from './utils/composeProviders';
 import ToastContainer from './components/ui/ToastContainer';
 import TaskManagerWidget from './components/TaskManager/TaskManagerWidget';
 import TabBar from './components/ui/TabBar';
+import WindowControls from './components/ui/WindowControls';
 import { useModelDownloadTask } from './hooks/useModelDownloadTask';
 import SideNav from './components/SideNav';
 import NavigationButtons from './components/BackButton';
@@ -186,6 +187,8 @@ function AppLayout({ children }: { children: React.ReactNode }): React.JSX.Eleme
                     </div>
                     <TabBar />
                 </div>
+                {/* Windows / Linux: custom close·minimise·maximise buttons */}
+                <WindowControls />
             </div>
             {/* ── Body: sidebar + main content ── */}
             <div className="flex flex-1 overflow-hidden">
