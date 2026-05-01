@@ -4,6 +4,10 @@
 
 This is an experimental “vibe-coding” project built with Copilot Opus, Sonnet, Claude Code, and OCR/LLM research for receipt data extraction in an expense tracking app. While cloud LLMs with agentic capabilities are powerful prototyping tools, they often lack a strong understanding of overall system architecture and become increasingly difficult to manage as project scope grows. This frequently results in messy, unmaintainable code and weak long-term design decisions. In my experience, they are highly effective for rapid prototyping and generating test cases, but still fall short of production and enterprise-grade software quality without strong engineering oversight. Effectively using these tools requires thoughtful planning, solid system design knowledge, and active control by the developer; blindly accepting AI-generated changes is not sufficient.
 
+- MacOS build is working
+- Windows build is not working
+- Linux build is untested
+
 **Free, open-source grocery price tracking.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
