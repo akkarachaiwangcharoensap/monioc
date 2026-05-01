@@ -149,17 +149,27 @@ jobs:
           & .\python-runtime\python.exe -m pip install --upgrade pip
           if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed (exit $LASTEXITCODE)" }
 
-          # llama-cpp-python does NOT publish prebuilt wheels on PyPI; the
-          # default `pip install` falls back to a from-source build that
-          # needs scikit-build-core + Visual Studio + CMake (CI fails with
-          # "BackendUnavailable: Cannot import 'scikit_build_core.build'").
-          # The project hosts CPU wheels on their own GitHub Pages index;
-          # passing it as an extra index lets pip pick a wheel for the
-          # llama-cpp-python entry while still resolving everything else
-          # (paddleocr, paddlepaddle, numpy …) from PyPI as normal.
+          # llama-cpp-python does NOT publish prebuilt wheels on PyPI; pip
+          # falls back to a from-source build that needs scikit-build-core +
+          # Visual Studio + CMake and fails on the runner with:
+          #   BackendUnavailable: Cannot import 'scikit_build_core.build'
+          # The project hosts CPU wheels on their own GitHub Pages index.
+          # Two flags make pip actually use them:
+          #   --extra-index-url <url>     adds the wheel index to the search
+          #   --only-binary llama-cpp-python  refuses to fall back to sdist
+          #                                   for this package even if pip
+          #                                   thinks a newer sdist exists
+          # Install it first so that the subsequent `-r requirements.txt`
+          # pass treats the version constraint as already satisfied.
+          Write-Host "  Installing llama-cpp-python from prebuilt CPU wheel..."
           & .\python-runtime\python.exe -m pip install `
+              --only-binary llama-cpp-python `
               --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu `
-              -r ../data/requirements.txt
+              "llama-cpp-python>=0.3.0"
+          if ($LASTEXITCODE -ne 0) { throw "llama-cpp-python wheel install failed (exit $LASTEXITCODE)" }
+
+          Write-Host "  Installing remaining dependencies from PyPI..."
+          & .\python-runtime\python.exe -m pip install -r ../data/requirements.txt
           if ($LASTEXITCODE -ne 0) { throw "pip install failed (exit $LASTEXITCODE)" }
 
           # Pre-compile bytecode so __pycache__ exists alongside .py files —
