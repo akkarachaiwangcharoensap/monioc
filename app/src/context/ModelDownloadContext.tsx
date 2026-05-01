@@ -1,7 +1,19 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import type React from 'react';
+import { listen } from '@tauri-apps/api/event';
 import { TauriApi } from '../services/api';
 import type { ModelStatus, ModelDownloadProgress } from '../services/api';
+
+/**
+ * Phase the orchestrated first-launch flow is currently in.
+ *
+ * `setup` covers the Windows-only embedded-Python bootstrap (download python.org
+ * runtime → bootstrap pip → pip install -r requirements.txt).  `models` covers
+ * the AI weight download.  The two are presented to the user as one combined
+ * "Download" action; this enum lets the UI render the right copy without each
+ * component having to track booleans for both phases.
+ */
+export type DownloadPhase = 'idle' | 'setup' | 'models';
 
 export interface ModelDownloadContextValue {
 	checking: boolean;
@@ -14,6 +26,10 @@ export interface ModelDownloadContextValue {
 	progress: ModelDownloadProgress | null;
 	removing: boolean;
 	error: string | null;
+	/** Current phase of the orchestrated download (setup → models). */
+	phase: DownloadPhase;
+	/** Latest progress line from the Python-environment bootstrap, while phase === 'setup'. */
+	setupMessage: string | null;
 	handleDownload: () => Promise<void>;
 	handleCancel: () => Promise<void>;
 	handleRemove: () => Promise<void>;
@@ -38,6 +54,8 @@ export function ModelDownloadProvider({ children }: { children: React.ReactNode 
 	const [removing, setRemoving] = useState(false);
 	const [progress, setProgress] = useState<ModelDownloadProgress | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [phase, setPhase] = useState<DownloadPhase>('idle');
+	const [setupMessage, setSetupMessage] = useState<string | null>(null);
 	const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 	const cancelledRef = useRef(false);
 
@@ -57,9 +75,11 @@ export function ModelDownloadProvider({ children }: { children: React.ReactNode 
 		return () => { cancelled = true; };
 	}, []);
 
-	// Poll disk progress while downloading (400 ms for snappy updates)
+	// Poll disk progress while downloading models (400 ms for snappy updates).
+	// Disabled during the 'setup' phase — that phase has no byte-level
+	// progress, only textual status events from the bootstrap script.
 	useEffect(() => {
-		if (!downloading) {
+		if (!downloading || phase !== 'models') {
 			if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
 			return;
 		}
@@ -73,14 +93,33 @@ export function ModelDownloadProvider({ children }: { children: React.ReactNode 
 		return () => {
 			if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
 		};
-	}, [downloading]);
+	}, [downloading, phase]);
 
 	const handleDownload = useCallback(async () => {
 		setDownloading(true);
 		setProgress(null);
 		setError(null);
+		setSetupMessage(null);
 		cancelledRef.current = false;
+
+		// Listen for python-setup-progress events for the duration of this call;
+		// they only fire on Windows during the setup phase.
+		let unlisten: (() => void) | null = null;
 		try {
+			unlisten = await listen<string>('python-setup-progress', (e) => {
+				if (typeof e.payload === 'string') setSetupMessage(e.payload);
+			});
+
+			// ── Phase 1: Python environment (Windows only — no-op elsewhere) ──
+			const pyStatus = await TauriApi.checkPythonEnv();
+			if (pyStatus.required && !pyStatus.ready) {
+				setPhase('setup');
+				await TauriApi.setupPythonEnv();
+				if (cancelledRef.current) return;
+			}
+
+			// ── Phase 2: AI model weights ─────────────────────────────────────
+			setPhase('models');
 			const result = await TauriApi.downloadModels();
 			if (!cancelledRef.current) {
 				setModelStatus(result);
@@ -94,7 +133,10 @@ export function ModelDownloadProvider({ children }: { children: React.ReactNode 
 				setError(detail.trim() || 'Download failed. Please check your internet connection and try again.');
 			}
 		} finally {
+			if (unlisten) unlisten();
 			setDownloading(false);
+			setPhase('idle');
+			setSetupMessage(null);
 			setProgress(null);
 		}
 	}, []);
@@ -105,8 +147,13 @@ export function ModelDownloadProvider({ children }: { children: React.ReactNode 
 		// cancel was triggered from the banner or the task widget.
 		setCancelling(true);
 		cancelledRef.current = true;
+		// Kill whichever phase is in flight.  Both calls are best-effort because
+		// only one of the two children is actually live at any given moment.
+		try { await TauriApi.cancelPythonSetup(); } catch { /* best effort */ }
 		try { await TauriApi.cancelModelDownload(); } catch { /* best effort */ }
 		setDownloading(false);
+		setPhase('idle');
+		setSetupMessage(null);
 		setProgress(null);
 		// Remove partially-downloaded files so the user gets a clean slate
 		// and the banner correctly shows "AI models required" again.
@@ -137,6 +184,8 @@ export function ModelDownloadProvider({ children }: { children: React.ReactNode 
 		progress,
 		removing,
 		error,
+		phase,
+		setupMessage,
 		handleDownload,
 		handleCancel,
 		handleRemove,

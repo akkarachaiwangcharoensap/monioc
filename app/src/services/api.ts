@@ -27,6 +27,16 @@ export interface ModelDownloadProgress {
     totalFiles: number;
 }
 
+export interface PythonSetupStatus {
+    /** Interpreter installed AND `pip install -r requirements.txt` finished. */
+    ready: boolean;
+    /** Absolute path to the embedded interpreter, when installed. */
+    interpreterPath?: string | null;
+    /** True only on platforms where the embedded-Python flow applies (Windows).
+     * macOS / Linux clients can use this to skip the setup-step UI. */
+    required: boolean;
+}
+
 export interface StorageInfo {
     appDataDir: string;
     fileCount: number;
@@ -120,6 +130,9 @@ export const TauriApi = {
     cancelModelDownload: () => invoke<void>('cancel_model_download'),
     modelDownloadProgress: () => invoke<ModelDownloadProgress>('model_download_progress'),
     removeModels: () => invoke<void>('remove_models'),
+    checkPythonEnv: () => invoke<PythonSetupStatus>('check_python_env'),
+    setupPythonEnv: () => invoke<PythonSetupStatus>('setup_python_env'),
+    cancelPythonSetup: () => invoke<void>('cancel_python_setup'),
 
     // Grocery reference data (Statistics Canada SQLite)
     getGroceryMetadata: () =>

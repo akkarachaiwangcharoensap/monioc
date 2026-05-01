@@ -76,6 +76,17 @@ pub(crate) fn resolve_with_env(
     // created by the installer / setup-python-deps script.
     // On macOS this is ~/Library/Caches/<bundle-id>/venv[312].
     if let Some(data_dir) = app_cache_dir {
+        // Windows: the first-launch bootstrap installs an isolated, embedded
+        // Python at <app_cache_dir>/python/python.exe (no venv layer because
+        // python-embed-amd64 doesn't support the venv module out of the box).
+        #[cfg(target_os = "windows")]
+        {
+            let p = data_dir.join("python").join("python.exe");
+            if p.exists() {
+                return p.to_string_lossy().into_owned();
+            }
+        }
+
         for venv_dir in PROJECT_VENV_DIRS {
             for bin in VENV_PYTHON_BINS {
                 let p = data_dir.join(venv_dir).join(bin);

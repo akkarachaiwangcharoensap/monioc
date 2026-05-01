@@ -7,19 +7,25 @@ import { formatBytes } from '../../utils/fileFormatting';
  * Returns null when models are ready.
  */
 export default function ModelDownloadBanner(): React.ReactElement | null {
-	const { checking, modelStatus, downloading, progress, error, handleDownload, handleCancel } = useModelDownload();
+	const { checking, modelStatus, downloading, progress, error, phase, setupMessage, handleDownload, handleCancel } = useModelDownload();
 
 	if (checking || !modelStatus) return null;
 	if (modelStatus.ocr && modelStatus.llm) return null;
 
 	// ── Downloading in progress ───────────────────────────────────────────
 	if (downloading) {
+		// Setup phase has no byte-level progress, only a textual status line
+		// from the bootstrap script — render an indeterminate bar with the
+		// most recent status message.
+		const isSetup = phase === 'setup';
 		const pct =
-			progress && progress.totalBytes > 0
+			!isSetup && progress && progress.totalBytes > 0
 				? Math.min(100, Math.round((progress.downloadedBytes / progress.totalBytes) * 100))
 				: 0;
-		const label =
-			progress && progress.totalBytes > 0
+		const title = isSetup ? 'Setting up Python environment' : 'Downloading AI Models';
+		const label = isSetup
+			? (setupMessage || 'Starting…')
+			: progress && progress.totalBytes > 0
 				? `${formatBytes(progress.downloadedBytes)} of ${formatBytes(progress.totalBytes)} · ${pct}%`
 				: 'Starting…';
 
@@ -30,14 +36,18 @@ export default function ModelDownloadBanner(): React.ReactElement | null {
 						<i className="fas fa-brain text-sm text-blue-500" aria-hidden="true" />
 					</div>
 					<div className="flex-1 min-w-0 space-y-1.5">
-						<p className="text-[13px] font-semibold text-slate-800">Downloading AI Models</p>
+						<p className="text-[13px] font-semibold text-slate-800">{title}</p>
 						<div className="h-[3px] w-full rounded-full bg-blue-200 overflow-hidden">
-							<div
-								className="h-full rounded-full bg-blue-500 transition-all duration-300 ease-out"
-								style={{ width: `${pct}%` }}
-							/>
+							{isSetup ? (
+								<div className="h-full w-1/3 rounded-full bg-blue-500 animate-pulse" />
+							) : (
+								<div
+									className="h-full rounded-full bg-blue-500 transition-all duration-300 ease-out"
+									style={{ width: `${pct}%` }}
+								/>
+							)}
 						</div>
-						<p className="text-[11px] text-blue-600 font-mono tabular-nums leading-none">{label}</p>
+						<p className="text-[11px] text-blue-600 font-mono tabular-nums leading-none truncate">{label}</p>
 					</div>
 					<button
 						type="button"

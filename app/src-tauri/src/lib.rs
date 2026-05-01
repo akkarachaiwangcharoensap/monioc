@@ -364,6 +364,7 @@ pub fn run() {
                 .map_err(|e| crate::error::AppError::Database(e.to_string()))?;
             app.manage(DbState(tauri::async_runtime::RwLock::new(pool)));
             app.manage(commands::misc::ModelDownloadState::new());
+            app.manage(commands::python_setup::PythonSetupState::new());
 
             // Serial job queue — processes receipt scan + categorize jobs one
             // at a time on a background tokio task and emits `job:status` events.
@@ -637,6 +638,9 @@ pub fn run() {
             commands::misc::cancel_model_download,
             commands::misc::model_download_progress,
             commands::misc::remove_models,
+            commands::python_setup::check_python_env,
+            commands::python_setup::setup_python_env,
+            commands::python_setup::cancel_python_setup,
             commands::image_library::add_images_to_library,
             commands::image_library::get_image_library,
             commands::image_library::get_library_entry,
