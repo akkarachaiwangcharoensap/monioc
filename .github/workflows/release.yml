@@ -147,7 +147,19 @@ jobs:
 
           Write-Host "Installing AI dependencies (~500 MB)..."
           & .\python-runtime\python.exe -m pip install --upgrade pip
-          & .\python-runtime\python.exe -m pip install -r ../data/requirements.txt
+          if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed (exit $LASTEXITCODE)" }
+
+          # llama-cpp-python does NOT publish prebuilt wheels on PyPI; the
+          # default `pip install` falls back to a from-source build that
+          # needs scikit-build-core + Visual Studio + CMake (CI fails with
+          # "BackendUnavailable: Cannot import 'scikit_build_core.build'").
+          # The project hosts CPU wheels on their own GitHub Pages index;
+          # passing it as an extra index lets pip pick a wheel for the
+          # llama-cpp-python entry while still resolving everything else
+          # (paddleocr, paddlepaddle, numpy …) from PyPI as normal.
+          & .\python-runtime\python.exe -m pip install `
+              --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu `
+              -r ../data/requirements.txt
           if ($LASTEXITCODE -ne 0) { throw "pip install failed (exit $LASTEXITCODE)" }
 
           # Pre-compile bytecode so __pycache__ exists alongside .py files —
