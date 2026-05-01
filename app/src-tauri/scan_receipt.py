@@ -63,6 +63,16 @@ import time
 from pathlib import Path
 from typing import Any, Dict
 
+# PaddlePaddle 3.0 made PIR (Paddle Intermediate Representation) the default
+# executor.  PIR's CPU operator coverage is incomplete on Windows, so PaddleOCR
+# inference on a CPU-only build crashes with:
+#   ConvertPirAttribute2RuntimeAttribute not supported
+# These flags must be set BEFORE any `import paddle` / `from paddleocr import …`
+# (paddle reads them once during its C++ runtime init) so the legacy program-
+# based executor — which has full CPU coverage — is used instead.
+os.environ.setdefault("FLAGS_enable_pir_api", "0")
+os.environ.setdefault("FLAGS_enable_pir_in_executor", "0")
+
 # ─── Platform detection ───────────────────────────────────────────────────────
 
 
