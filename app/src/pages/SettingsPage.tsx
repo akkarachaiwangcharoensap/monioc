@@ -161,7 +161,9 @@ export default function SettingsPage(): React.ReactElement {
 												: 'Not downloaded · ~5.4 GB required'}
 								</p>
 								{modelError && !downloading && (
-									<p className="text-xs text-red-500 mt-1">{modelError}</p>
+									<p className="text-xs text-red-500 mt-1 whitespace-pre-wrap break-words">
+										{modelError}
+									</p>
 								)}
 							</div>
 						</div>

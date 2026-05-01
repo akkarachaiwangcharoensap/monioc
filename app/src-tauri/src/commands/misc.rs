@@ -212,6 +212,12 @@ pub struct ModelStatus {
     pub ocr: bool,
     /// LLM model (MLX / GGUF / ollama) cached locally.
     pub llm: bool,
+    /// Human-readable failure reason from the Python script. Set only when
+    /// a download/check failed; the frontend uses it in place of a generic
+    /// "Download failed" message so users can see the actual problem in
+    /// production builds where there is no console.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 /// Progress of an ongoing model download, polled from disk.
@@ -257,13 +263,21 @@ fn resolve_check_models_cmd(
     Ok((python_cmd, script_str))
 }
 
+/// Captured output from `check_models.py`. `stderr_tail` is the last few KB of
+/// stderr — surfaced to the user when the JSON status indicates failure but
+/// the Python script did not record a structured error.
+struct CheckModelsOutput {
+    json: serde_json::Value,
+    stderr_tail: String,
+}
+
 /// Run `check_models.py` with the given args – captures stdout JSON, streams
 /// stderr progress, and optionally stores the child process for cancellation.
 async fn run_check_models_script(
     app: &tauri::AppHandle,
     extra_args: &[&str],
     store_child: bool,
-) -> Result<serde_json::Value, AppError> {
+) -> Result<CheckModelsOutput, AppError> {
     use tauri_plugin_shell::process::CommandEvent;
     use tauri_plugin_shell::ShellExt;
 
@@ -343,29 +357,61 @@ async fn run_check_models_script(
         })
         .unwrap_or(stdout.trim());
 
-    serde_json::from_str(json_line)
-        .map_err(|e| AppError::Processing(format!("Invalid model status JSON: {e}")))
+    let json: serde_json::Value = serde_json::from_str(json_line)
+        .map_err(|e| AppError::Processing(format!("Invalid model status JSON: {e}")))?;
+
+    // Keep the tail of stderr so callers can surface a meaningful reason when
+    // the JSON status itself does not include one.
+    let stderr_text = String::from_utf8_lossy(&stderr_bytes).to_string();
+    let stderr_tail: String = stderr_text
+        .lines()
+        .rev()
+        .take(40)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    Ok(CheckModelsOutput { json, stderr_tail })
+}
+
+/// Build a human-readable error string for a partially-successful run.
+/// Prefers the structured `error` field from the script's JSON output, then
+/// falls back to the most recent stderr lines.
+fn extract_failure_reason(output: &CheckModelsOutput) -> Option<String> {
+    if let Some(err) = output.json.get("error").and_then(|v| v.as_str()) {
+        if !err.trim().is_empty() {
+            return Some(err.to_string());
+        }
+    }
+    let tail = output.stderr_tail.trim();
+    if tail.is_empty() {
+        None
+    } else {
+        Some(tail.to_string())
+    }
 }
 
 /// Check whether AI models (OCR + LLM) are available locally.
 #[tauri::command]
 pub async fn check_model_status(app: tauri::AppHandle) -> Result<ModelStatus, AppError> {
-    let parsed = run_check_models_script(&app, &[], false).await?;
-    Ok(ModelStatus {
-        ocr: parsed.get("ocr").and_then(|v| v.as_bool()).unwrap_or(false),
-        llm: parsed.get("llm").and_then(|v| v.as_bool()).unwrap_or(false),
-    })
+    let out = run_check_models_script(&app, &[], false).await?;
+    let ocr = out.json.get("ocr").and_then(|v| v.as_bool()).unwrap_or(false);
+    let llm = out.json.get("llm").and_then(|v| v.as_bool()).unwrap_or(false);
+    let error = if ocr && llm { None } else { extract_failure_reason(&out) };
+    Ok(ModelStatus { ocr, llm, error })
 }
 
 /// Download any missing AI models. Streams progress via `model-download-progress` events.
 /// The child process is stored in `ModelDownloadState` so it can be cancelled.
 #[tauri::command]
 pub async fn download_models(app: tauri::AppHandle) -> Result<ModelStatus, AppError> {
-    let parsed = run_check_models_script(&app, &["--download"], true).await?;
-    Ok(ModelStatus {
-        ocr: parsed.get("ocr").and_then(|v| v.as_bool()).unwrap_or(false),
-        llm: parsed.get("llm").and_then(|v| v.as_bool()).unwrap_or(false),
-    })
+    let out = run_check_models_script(&app, &["--download"], true).await?;
+    let ocr = out.json.get("ocr").and_then(|v| v.as_bool()).unwrap_or(false);
+    let llm = out.json.get("llm").and_then(|v| v.as_bool()).unwrap_or(false);
+    let error = if ocr && llm { None } else { extract_failure_reason(&out) };
+    Ok(ModelStatus { ocr, llm, error })
 }
 
 /// Kill the currently-running model download process, if any.
@@ -386,12 +432,12 @@ pub async fn cancel_model_download(
 /// Poll on-disk progress of an in-flight model download.
 #[tauri::command]
 pub async fn model_download_progress(app: tauri::AppHandle) -> Result<ModelDownloadProgress, AppError> {
-    let parsed = run_check_models_script(&app, &["--progress"], false).await?;
+    let out = run_check_models_script(&app, &["--progress"], false).await?;
     Ok(ModelDownloadProgress {
-        downloaded_bytes: parsed.get("downloadedBytes").and_then(|v| v.as_u64()).unwrap_or(0),
-        total_bytes: parsed.get("totalBytes").and_then(|v| v.as_u64()).unwrap_or(0),
-        downloaded_files: parsed.get("downloadedFiles").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
-        total_files: parsed.get("totalFiles").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+        downloaded_bytes: out.json.get("downloadedBytes").and_then(|v| v.as_u64()).unwrap_or(0),
+        total_bytes: out.json.get("totalBytes").and_then(|v| v.as_u64()).unwrap_or(0),
+        downloaded_files: out.json.get("downloadedFiles").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+        total_files: out.json.get("totalFiles").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
     })
 }
 

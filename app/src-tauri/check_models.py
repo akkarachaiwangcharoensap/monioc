@@ -25,7 +25,22 @@ import os
 import platform
 import shutil
 import sys
+import traceback
 from pathlib import Path
+
+# Module-level error collector: populated by the download functions and
+# included in the final JSON status so the frontend can surface the exact
+# failure reason to the user (production builds have no console).
+_errors: list[str] = []
+
+def _record_error(label: str, exc: BaseException) -> None:
+    detail = f"{type(exc).__name__}: {exc}".strip()
+    _errors.append(f"{label}: {detail}" if label else detail)
+    # Also emit the full traceback to stderr for any developer / log capture.
+    tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    for line in tb.splitlines():
+        if line.strip():
+            print(f"{_PROGRESS_PREFIX} TRACE {line}", file=sys.stderr, flush=True)
 
 _PROGRESS_PREFIX = "[check_models]"
 
@@ -117,6 +132,7 @@ def _download_ocr_models() -> bool:
         if _ocr_models_present():
             _progress("OCR models verified on disk — treating as downloaded.")
             return True
+        _record_error("OCR download failed", exc)
         return False
 
 # ── LLM model check ─────────────────────────────────────────────────────────
@@ -206,9 +222,26 @@ def _download_llm_model() -> bool:
             snapshot_download(repo_id=model_id, allow_patterns=allow)
 
         _progress("AI analysis model downloaded.")
+
+        # Verify the file actually landed where we expect.  On Windows the
+        # download bytes can reach 100% but the post-download symlink/hardlink
+        # creation can silently fail, leaving blobs/ populated but snapshots/
+        # missing the .gguf — which would later look like "model not present".
+        if not _llm_model_present():
+            _record_error(
+                "LLM verification failed after download",
+                RuntimeError(
+                    "Bytes downloaded but the model file is not loadable from "
+                    f"{_llm_hf_cache_dir(model_id)}. This usually means HF Hub "
+                    "could not create the snapshot symlink/hardlink (Windows "
+                    "without Developer Mode, antivirus lock, or path length)."
+                ),
+            )
+            return False
         return True
     except Exception as exc:
         _progress(f"AI model download failed: {exc}")
+        _record_error("LLM download failed", exc)
         return False
 
 # ── Progress polling ─────────────────────────────────────────────────────────
@@ -298,7 +331,10 @@ def main() -> None:
         ocr_ok = _ocr_models_present()
         llm_ok = _llm_model_present()
 
-    print(json.dumps({"ocr": ocr_ok, "llm": llm_ok}))
+    payload: dict = {"ocr": ocr_ok, "llm": llm_ok}
+    if _errors:
+        payload["error"] = " | ".join(_errors)
+    print(json.dumps(payload))
 
 
 if __name__ == "__main__":

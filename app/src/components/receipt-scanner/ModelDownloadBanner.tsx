@@ -61,7 +61,11 @@ export default function ModelDownloadBanner(): React.ReactElement | null {
 					<p className="mt-1 text-slate-600 text-xs leading-relaxed">
 						A one-time download (~5.4 GB) is needed before scanning.
 					</p>
-					{error && <p className="mt-1.5 text-xs text-red-600">{error}</p>}
+					{error && (
+						<p className="mt-1.5 text-xs text-red-600 whitespace-pre-wrap break-words">
+							{error}
+						</p>
+					)}
 					<div className="mt-3">
 						<button
 							type="button"

@@ -85,12 +85,13 @@ export function ModelDownloadProvider({ children }: { children: React.ReactNode 
 			if (!cancelledRef.current) {
 				setModelStatus(result);
 				if (!result.ocr || !result.llm) {
-					setError('Download failed. Please check your internet connection and try again.');
+					setError(result.error?.trim() || 'Download failed. Please check your internet connection and try again.');
 				}
 			}
-		} catch {
+		} catch (e) {
 			if (!cancelledRef.current) {
-				setError('Download failed. Please check your internet connection and try again.');
+				const detail = e instanceof Error ? e.message : (typeof e === 'string' ? e : '');
+				setError(detail.trim() || 'Download failed. Please check your internet connection and try again.');
 			}
 		} finally {
 			setDownloading(false);

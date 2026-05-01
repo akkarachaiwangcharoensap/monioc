@@ -13,6 +13,11 @@ import type {
 export interface ModelStatus {
     ocr: boolean;
     llm: boolean;
+    /** Human-readable failure reason from the Python downloader. Present only
+     * when `ocr` or `llm` is false; the UI shows this in place of a generic
+     * message so production users can see the real cause (e.g. HF Hub symlink
+     * failure, antivirus lock, path too long). */
+    error?: string | null;
 }
 
 export interface ModelDownloadProgress {
