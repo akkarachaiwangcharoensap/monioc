@@ -243,11 +243,11 @@ impl ModelDownloadState {
 fn resolve_check_models_cmd(
     app: &tauri::AppHandle,
 ) -> Result<(String, String), AppError> {
-    let script_path = app
+    let resource_dir = app
         .path()
         .resource_dir()
-        .map_err(|e| AppError::Path(e.to_string()))?
-        .join("check_models.py");
+        .map_err(|e| AppError::Path(e.to_string()))?;
+    let script_path = resource_dir.join("check_models.py");
 
     let script_str = script_path
         .to_str()
@@ -258,7 +258,8 @@ fn resolve_check_models_cmd(
         .path()
         .app_cache_dir()
         .map_err(|e| AppError::Path(e.to_string()))?;
-    let python_cmd = crate::python::resolve(&script_path, Some(&app_cache_dir));
+    let python_cmd =
+        crate::python::resolve(&script_path, Some(&app_cache_dir), Some(&resource_dir));
 
     Ok((python_cmd, script_str))
 }

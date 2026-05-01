@@ -51,8 +51,8 @@
       "scan_receipt.py": "scan_receipt.py",
       "categorize_items.py": "categorize_items.py",
       "check_models.py": "check_models.py",
-      "scripts/windows/setup-python-env.ps1": "setup-python-env.ps1",
-      "../data/requirements.txt": "requirements.txt"
+      "../data/requirements.txt": "requirements.txt",
+      "python-runtime": "python-runtime"
     }
   },
   "plugins": {

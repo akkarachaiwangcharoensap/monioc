@@ -131,8 +131,6 @@ export const TauriApi = {
     modelDownloadProgress: () => invoke<ModelDownloadProgress>('model_download_progress'),
     removeModels: () => invoke<void>('remove_models'),
     checkPythonEnv: () => invoke<PythonSetupStatus>('check_python_env'),
-    setupPythonEnv: () => invoke<PythonSetupStatus>('setup_python_env'),
-    cancelPythonSetup: () => invoke<void>('cancel_python_setup'),
 
     // Grocery reference data (Statistics Canada SQLite)
     getGroceryMetadata: () =>

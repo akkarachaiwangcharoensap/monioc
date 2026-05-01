@@ -17,6 +17,10 @@ landing/.next/
 # Tauri generated
 app/src-tauri/gen/
 
+# Bundled Python runtime — produced by CI before `tauri build` on Windows.
+# Never check in: ~500 MB of binary wheels.
+app/src-tauri/python-runtime/
+
 # Environment files (never commit secrets)
 .env
 .env.*

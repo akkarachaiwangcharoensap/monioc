@@ -15,6 +15,23 @@ fn main() {
         create_placeholder_grocery_db(db_path);
     }
 
+    // python-runtime/ holds the bundled Python 3.12 + AI deps that the Windows
+    // installer ships.  CI populates it before `tauri build` (see
+    // .github/workflows/release.yml).  For local non-Windows / IDE / plain
+    // `cargo check` builds, the directory may not exist — create a placeholder
+    // so Tauri's resource-existence check doesn't fail.  The placeholder
+    // directory is harmless on macOS / Linux: it'll be bundled empty (~0 KB)
+    // and `python::interpreter::resolve` will not pick it up because
+    // `python.exe` won't exist inside it.
+    let py_runtime_dir = Path::new("python-runtime");
+    if !py_runtime_dir.exists() {
+        std::fs::create_dir_all(py_runtime_dir).ok();
+        let _ = std::fs::write(
+            py_runtime_dir.join(".placeholder"),
+            "Populated by CI on Windows. See .github/workflows/release.yml.\n",
+        );
+    }
+
     tauri_build::build()
 }
 

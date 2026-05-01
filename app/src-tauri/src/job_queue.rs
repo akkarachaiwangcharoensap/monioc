@@ -523,12 +523,8 @@ impl JobWorker {
         use tauri_plugin_shell::process::CommandEvent;
         use tauri_plugin_shell::ShellExt;
 
-        let script_path = self
-            .app
-            .path()
-            .resource_dir()
-            .map_err(|e| e.to_string())?
-            .join("scan_receipt.py");
+        let resource_dir = self.app.path().resource_dir().map_err(|e| e.to_string())?;
+        let script_path = resource_dir.join("scan_receipt.py");
 
         let script_str = script_path
             .to_str()
@@ -536,7 +532,8 @@ impl JobWorker {
 
         let app_data_dir = self.app.path().app_data_dir().map_err(|e| e.to_string())?;
         let app_cache_dir = self.app.path().app_cache_dir().map_err(|e| e.to_string())?;
-        let python_cmd = crate::python::resolve(&script_path, Some(&app_cache_dir));
+        let python_cmd =
+            crate::python::resolve(&script_path, Some(&app_cache_dir), Some(&resource_dir));
 
         let processed_dir = app_data_dir.join(RECEIPT_SCANS_DIR);
         std::fs::create_dir_all(&processed_dir).map_err(|e| e.to_string())?;
@@ -668,19 +665,16 @@ impl JobWorker {
             return Ok(Vec::new());
         }
 
-        let script_path = self
-            .app
-            .path()
-            .resource_dir()
-            .map_err(|e| e.to_string())?
-            .join("categorize_items.py");
+        let resource_dir = self.app.path().resource_dir().map_err(|e| e.to_string())?;
+        let script_path = resource_dir.join("categorize_items.py");
 
         let script_str = script_path
             .to_str()
             .ok_or_else(|| "Script path contains invalid UTF-8".to_string())?;
 
         let app_cache_dir = self.app.path().app_cache_dir().map_err(|e| e.to_string())?;
-        let python_cmd = crate::python::resolve(&script_path, Some(&app_cache_dir));
+        let python_cmd =
+            crate::python::resolve(&script_path, Some(&app_cache_dir), Some(&resource_dir));
 
         let input_json =
             serde_json::json!({ "items": items, "categories": categories }).to_string();

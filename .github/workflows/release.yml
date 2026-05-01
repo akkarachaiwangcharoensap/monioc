@@ -106,6 +106,62 @@ jobs:
         working-directory: app
         run: python3 scripts/build-grocery-db.py --force
 
+      # Bundle a self-contained Python 3.12 runtime with all AI dependencies
+      # pre-installed.  This is what gets shipped inside the .exe installer so
+      # users don't need Python on their system and the first launch doesn't
+      # have to download anything.
+      #
+      # Layout produced: app/src-tauri/python-runtime/
+      #   ├── python.exe                 (10 MB, embeddable)
+      #   ├── python312.dll, *.zip, ...
+      #   ├── python312._pth             (with `import site` enabled)
+      #   └── Lib/site-packages/         (paddleocr, paddlepaddle, llama-cpp-python, ...)
+      - name: Bundle Python runtime + AI dependencies
+        shell: pwsh
+        working-directory: app/src-tauri
+        run: |
+          $ErrorActionPreference = "Stop"
+          $ProgressPreference = "SilentlyContinue"
+          $PythonVersion = "3.12.7"
+          $EmbedUrl = "https://www.python.org/ftp/python/$PythonVersion/python-$PythonVersion-embed-amd64.zip"
+
+          Write-Host "Downloading Python $PythonVersion embeddable runtime..."
+          Invoke-WebRequest -Uri $EmbedUrl -OutFile python-embed.zip -UseBasicParsing
+          if (Test-Path python-runtime) { Remove-Item -Recurse -Force python-runtime }
+          Expand-Archive -Path python-embed.zip -DestinationPath python-runtime -Force
+          Remove-Item python-embed.zip
+
+          # Embeddable Python ships with `import site` commented out — uncomment
+          # so pip and our deps end up on sys.path.
+          $pthFile = Get-ChildItem -Path python-runtime -Filter "python*._pth" |
+              Select-Object -First 1
+          $content = Get-Content $pthFile.FullName
+          $content = $content -replace '^\s*#\s*import\s+site', 'import site'
+          Set-Content -Path $pthFile.FullName -Value $content
+
+          Write-Host "Bootstrapping pip..."
+          Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" `
+              -OutFile get-pip.py -UseBasicParsing
+          & .\python-runtime\python.exe get-pip.py --no-warn-script-location
+          Remove-Item get-pip.py
+
+          Write-Host "Installing AI dependencies (~500 MB)..."
+          & .\python-runtime\python.exe -m pip install --upgrade pip
+          & .\python-runtime\python.exe -m pip install -r ../data/requirements.txt
+          if ($LASTEXITCODE -ne 0) { throw "pip install failed (exit $LASTEXITCODE)" }
+
+          # Pre-compile bytecode so __pycache__ exists alongside .py files —
+          # otherwise Python tries to write to Program Files at runtime, which
+          # fails silently and slows every import.  -q keeps logs tidy; -f
+          # forces rebuild even if a stale .pyc exists.
+          Write-Host "Pre-compiling Python bytecode..."
+          & .\python-runtime\python.exe -m compileall -q -f .\python-runtime\Lib
+
+          Write-Host "Bundle size:"
+          $size = (Get-ChildItem -Recurse python-runtime |
+              Measure-Object -Property Length -Sum).Sum
+          "{0:N0} MB" -f ($size / 1MB)
+
       - name: Build app
         working-directory: app
         run: npx tauri build
