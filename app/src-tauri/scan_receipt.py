@@ -1018,6 +1018,46 @@ def _dedupe_adjacent(lines: list[str]) -> list[str]:
     return out
 
 
+def _paddle_ocr_kwargs() -> dict:
+    """Return the PaddleOCR() constructor kwargs for the current platform.
+
+    On Windows we enable PaddleOCR's High-Performance Inference (HPI) with
+    the **ONNX Runtime** backend.  This is the deployment path the
+    PaddleOCR team officially supports for Windows production (see the
+    PP-OCRv5 release notes — "Comprehensive upgrade of the PP-OCRv5 […]
+    deployment solution, now supporting both Linux and Windows, with
+    feature parity and identical accuracy to the Python implementation").
+
+    Why ONNX Runtime instead of paddle_inference on Windows:
+      - paddle_inference's CPU operator coverage on Windows is
+        incomplete (the PIR executor crashes mid-inference)
+      - onnxruntime is Microsoft-native: no missing CPU operators, no
+        DLL search-path issues
+      - onnxruntime ships its own thread pool, sidestepping the
+        libiomp5md.dll vs libomp140.x86_64.dll OpenMP collision
+      - identical OCR accuracy per the upstream release notes
+
+    On macOS/Linux paddle_inference is the right backend; we leave the
+    default behaviour untouched there.
+    """
+    kwargs: dict = {
+        "lang": "en",
+        "use_doc_orientation_classify": False,
+        "use_doc_unwarping": False,
+    }
+    if sys.platform == "win32":
+        try:
+            import onnxruntime  # type: ignore  # noqa: F401 — probe-only
+            kwargs["enable_hpi"] = True
+            kwargs["hpi_config"] = {"backend": "onnxruntime"}
+            _progress("  Using ONNX Runtime backend for Windows.")
+        except ImportError:
+            _progress(
+                "  onnxruntime not installed; falling back to paddle_inference."
+            )
+    return kwargs
+
+
 def _ocr_with_paddle(image_path: str) -> str:
     """Run PaddleOCR to extract text from receipt image.
 
@@ -1039,11 +1079,7 @@ def _ocr_with_paddle(image_path: str) -> str:
         from paddleocr import PaddleOCR  # type: ignore
 
         with _Spinner("Starting text recognition"):
-            ocr = PaddleOCR(
-                lang="en",
-                use_doc_orientation_classify=False,
-                use_doc_unwarping=False,
-            )
+            ocr = PaddleOCR(**_paddle_ocr_kwargs())
     except Exception as init_exc:
         raise RuntimeError(
             "PaddleOCR failed to initialize. Install latest packages with: "

@@ -5,12 +5,31 @@ numpy==1.26.4
 tqdm>=4.66.0
 # Receipt scanner dependencies
 # paddlepaddle is the backend; install the CPU or GPU wheel for your platform:
-#   CPU (macOS/Linux):  pip install paddlepaddle
-#   GPU (CUDA 12):      pip install paddlepaddle-gpu
-paddlepaddle>=3.0.0
+#   CPU (macOS/Linux):    pip install paddlepaddle
+#   CPU (Windows, prod):  pip install paddlepaddle==3.1.x \
+#                           -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
+#   GPU (CUDA 12):        pip install paddlepaddle-gpu
+# 3.1.0/3.1.1 are the first releases supported by PaddleOCR's PP-OCRv5
+# Windows deployment path.  Earlier 3.0.x has incomplete PIR CPU coverage
+# that crashes during inference on Windows.
+paddlepaddle>=3.1.0
 # Use latest PaddleOCR (standard OCR pipeline, not VL doc parser).
 paddleocr>=3.4.0
 pillow>=10.0.0
+
+# Windows-only: ONNX Runtime backend for PaddleOCR's High-Performance
+# Inference (HPI).  PaddleOCR 3.x officially supports running on
+# onnxruntime instead of paddle_inference — this is the recommended
+# Windows production deployment per the PP-OCRv5 release notes because:
+#   - onnxruntime is Microsoft-native and avoids paddle_inference's
+#     incomplete CPU operator coverage on Windows
+#   - it ships its own thread pool, sidestepping the libiomp5md.dll /
+#     libomp140.x86_64.dll OpenMP collision with numpy/MKL
+#   - the OCR accuracy is identical to the paddle_inference path
+# scan_receipt.py / check_models.py auto-detect this and pass
+# `enable_hpi=True, hpi_config={"backend": "onnxruntime"}` to PaddleOCR().
+onnxruntime>=1.18.0; sys_platform == "win32"
+paddle2onnx>=1.2.0; sys_platform == "win32"
 
 # LLM inference — backend is chosen automatically based on platform:
 #

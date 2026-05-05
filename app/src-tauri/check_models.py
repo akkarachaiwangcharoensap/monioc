@@ -130,6 +130,32 @@ def _ocr_models_present() -> bool:
     has_rec = any(d.name.endswith("_rec") for d in models_dir.iterdir() if d.is_dir())
     return has_det and has_rec
 
+def _paddle_ocr_kwargs() -> dict:
+    """Return the PaddleOCR() constructor kwargs for the current platform.
+
+    Mirrors the helper in scan_receipt.py: on Windows we enable HPI with
+    the ONNX Runtime backend (PaddleOCR's officially-supported Windows
+    production deployment path).  Kept in lockstep with scan_receipt.py
+    so the OCR engine instantiated here for model download uses exactly
+    the same backend that scan_receipt.py will use at inference time —
+    otherwise paddleocr could download paddle_inference weights here and
+    then re-download ONNX weights on first scan.
+    """
+    kwargs: dict = {
+        "lang": "en",
+        "use_doc_orientation_classify": False,
+        "use_doc_unwarping": False,
+    }
+    if sys.platform == "win32":
+        try:
+            import onnxruntime  # type: ignore  # noqa: F401
+            kwargs["enable_hpi"] = True
+            kwargs["hpi_config"] = {"backend": "onnxruntime"}
+        except ImportError:
+            pass
+    return kwargs
+
+
 def _download_ocr_models() -> bool:
     """Trigger PaddleOCR model download by running a minimal init."""
     try:
@@ -138,11 +164,7 @@ def _download_ocr_models() -> bool:
         os.environ.setdefault("MKL_NUM_THREADS", "2")
         from paddleocr import PaddleOCR  # type: ignore
         _progress("Initializing PaddleOCR (this downloads models on first run) …")
-        PaddleOCR(
-            lang="en",
-            use_doc_orientation_classify=False,
-            use_doc_unwarping=False,
-        )
+        PaddleOCR(**_paddle_ocr_kwargs())
         _progress("OCR models downloaded.")
         return True
     except Exception as exc:

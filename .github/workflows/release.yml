@@ -161,6 +161,37 @@ jobs:
           & .\python-runtime\python.exe -m pip install --upgrade pip
           if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed (exit $LASTEXITCODE)" }
 
+          # ── paddlepaddle: install from the *official* Paddle CDN ──────
+          # PaddleOCR's installation guide (PaddlePaddle/PaddleOCR →
+          # docs/installation.en.md) tells Windows users to install the
+          # framework from https://www.paddlepaddle.org.cn/packages/stable/cpu/
+          # rather than PyPI.  Same version number, different build:
+          # only the CDN wheel is the one the PaddlePaddle team builds and
+          # tests for Windows production deployment, and it includes the
+          # paddle_inference DLLs that paddleocr needs to load.  The PyPI
+          # mirror is a thin/legacy build that is missing pieces of the
+          # inference runtime on Windows.
+          # 3.1.x is the first series with full PP-OCRv5 Windows support.
+          Write-Host "  Installing paddlepaddle from official Paddle CDN..."
+          & .\python-runtime\python.exe -m pip install `
+              --index-url https://www.paddlepaddle.org.cn/packages/stable/cpu/ `
+              --extra-index-url https://pypi.org/simple `
+              "paddlepaddle>=3.1.0,<3.2.0"
+          if ($LASTEXITCODE -ne 0) { throw "paddlepaddle CDN install failed (exit $LASTEXITCODE)" }
+
+          # ── onnxruntime backend for PaddleOCR HPI ────────────────────
+          # Install onnxruntime + paddle2onnx ahead of paddleocr so that
+          # PaddleOCR's HPI layer detects them on first instantiation and
+          # converts the PP-OCRv5 weights to ONNX once instead of falling
+          # back to paddle_inference (which crashes on Windows CPU per
+          # the PIR coverage gap).  scan_receipt.py / check_models.py
+          # then pass enable_hpi=True, hpi_config={"backend":"onnxruntime"}.
+          Write-Host "  Installing onnxruntime + paddle2onnx (Windows HPI backend)..."
+          & .\python-runtime\python.exe -m pip install `
+              "onnxruntime>=1.18.0" "paddle2onnx>=1.2.0"
+          if ($LASTEXITCODE -ne 0) { throw "onnxruntime install failed (exit $LASTEXITCODE)" }
+
+          # ── llama-cpp-python: prebuilt CPU wheel from abetlen index ──
           # llama-cpp-python does NOT publish prebuilt wheels on PyPI; pip
           # falls back to a from-source build that needs scikit-build-core +
           # Visual Studio + CMake and fails on the runner with:
@@ -171,8 +202,8 @@ jobs:
           #   --only-binary llama-cpp-python  refuses to fall back to sdist
           #                                   for this package even if pip
           #                                   thinks a newer sdist exists
-          # Install it first so that the subsequent `-r requirements.txt`
-          # pass treats the version constraint as already satisfied.
+          # Install it before -r requirements.txt so the subsequent pass
+          # sees the version constraint as already satisfied.
           Write-Host "  Installing llama-cpp-python from prebuilt CPU wheel..."
           & .\python-runtime\python.exe -m pip install `
               --only-binary llama-cpp-python `
@@ -181,26 +212,43 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "llama-cpp-python wheel install failed (exit $LASTEXITCODE)" }
 
           Write-Host "  Installing remaining dependencies from PyPI..."
-          # Repeat --only-binary llama-cpp-python and the wheel index here:
-          # requirements.txt declares `llama-cpp-python>=0.3.0` and pip will
-          # otherwise re-resolve and silently upgrade to a newer PyPI sdist,
-          # triggering the same scikit-build-core failure we fought above.
+          # Repeat --only-binary llama-cpp-python + its wheel index, and
+          # add the Paddle CDN as an extra index, so that pip's resolver
+          # doesn't silently downgrade/upgrade either of the three special
+          # packages back to a broken default while resolving
+          # requirements.txt.  Default index stays PyPI for everything else.
           & .\python-runtime\python.exe -m pip install `
               --only-binary llama-cpp-python `
               --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu `
+              --extra-index-url https://www.paddlepaddle.org.cn/packages/stable/cpu/ `
               -r ../data/requirements.txt
           if ($LASTEXITCODE -ne 0) { throw "pip install failed (exit $LASTEXITCODE)" }
 
           # Smoke-import the runtime stack so a broken bundle fails the build
           # instead of shipping an installer that crashes on the user's
-          # machine.  KMP_DUPLICATE_LIB_OK matches the runtime guard set in
-          # scan_receipt.py / check_models.py — without it the import below
-          # aborts the runner with `OMP: Error #15`.
+          # machine.  KMP_DUPLICATE_LIB_OK + FLAGS_enable_pir_* mirror the
+          # runtime guards set at the top of scan_receipt.py /
+          # check_models.py — without them the import below aborts the
+          # runner with `OMP: Error #15` or PIR operator errors.
           Write-Host "Smoke-testing AI runtime imports..."
           $env:KMP_DUPLICATE_LIB_OK = "TRUE"
           $env:FLAGS_enable_pir_api = "0"
           $env:FLAGS_enable_pir_in_executor = "0"
-          & .\python-runtime\python.exe -c "import paddle, paddleocr, llama_cpp, huggingface_hub, PIL, numpy; print('paddle', paddle.__version__); print('paddleocr', paddleocr.__version__); print('numpy', numpy.__version__)"
+          # Single-line `python -c` — a here-string would collide with YAML
+          # block indentation.  The script imports every wheel we shipped,
+          # prints the resolved versions, and asserts that onnxruntime
+          # exposes the CPU execution provider (HPI refuses to start
+          # otherwise).
+          $smoke = "import paddle, paddleocr, llama_cpp, huggingface_hub, PIL, numpy, onnxruntime, paddle2onnx; " +
+                   "print('paddle', paddle.__version__); " +
+                   "print('paddleocr', paddleocr.__version__); " +
+                   "print('onnxruntime', onnxruntime.__version__); " +
+                   "print('paddle2onnx', paddle2onnx.__version__); " +
+                   "print('numpy', numpy.__version__); " +
+                   "providers = onnxruntime.get_available_providers(); " +
+                   "assert 'CPUExecutionProvider' in providers, providers; " +
+                   "print('onnxruntime EPs', providers)"
+          & .\python-runtime\python.exe -c $smoke
           if ($LASTEXITCODE -ne 0) { throw "AI runtime smoke import failed (exit $LASTEXITCODE)" }
 
           # Pre-compile bytecode so __pycache__ exists alongside .py files —

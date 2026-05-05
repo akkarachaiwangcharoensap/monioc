@@ -81,17 +81,25 @@ Tauri's `interpreter.rs` resolver prefers `<resource_dir>/python-runtime/python.
 
 The bundled stack:
 
-- `paddlepaddle>=3.0.0` — CPU build (PyPI wheel)
-- `paddleocr>=3.4.0` — text recognition models download to `~/.paddlex/official_models` on first launch (~100 MB)
-- `llama-cpp-python>=0.3.0` — CPU build from the abetlen wheel index (PyPI does not publish prebuilt Windows wheels)
-- `numpy==1.26.4`, `pillow`, `huggingface_hub`, `pandas`, `tqdm`
+- `paddlepaddle>=3.1.0` — CPU build, **installed from the official Paddle CDN** (`https://www.paddlepaddle.org.cn/packages/stable/cpu/`), not PyPI. PaddleOCR's installation guide tells Windows users to use the CDN; same version number, different build — only the CDN wheel includes the full `paddle_inference` runtime that paddleocr loads on Windows. PP-OCRv5 Windows support landed in 3.1.0/3.1.1.
+- `paddleocr>=3.4.0` — text-recognition models download to `~/.paddlex/official_models` on first launch (~100 MB).
+- `onnxruntime>=1.18.0` + `paddle2onnx>=1.2.0` — **Windows-only.** PaddleOCR's High-Performance Inference (HPI) layer detects these at OCR construction time and runs PP-OCRv5 weights through ONNX Runtime instead of `paddle_inference`. This is the deployment path the PaddleOCR team officially supports for Windows production (per the PP-OCRv5 release notes: "feature parity and identical accuracy to the Python implementation"). `scan_receipt.py` and `check_models.py` pass `enable_hpi=True, hpi_config={"backend": "onnxruntime"}` to the `PaddleOCR()` constructor on Windows; everywhere else the constructor falls back to `paddle_inference`.
+- `llama-cpp-python>=0.3.0` — CPU build from the abetlen wheel index (PyPI does not publish prebuilt Windows wheels).
+- `numpy==1.26.4`, `pillow`, `huggingface_hub`, `pandas`, `tqdm`.
 
-Two flags are critical and set both at install-smoke-test time and at runtime in `scan_receipt.py` / `check_models.py`:
+Why ONNX Runtime on Windows specifically:
+
+- `paddle_inference`'s CPU operator coverage on Windows is incomplete — PaddlePaddle 3.0/3.1's PIR executor crashes mid-inference with `ConvertPirAttribute2RuntimeAttribute not supported`.
+- `onnxruntime` is Microsoft-native: no missing CPU operators, no DLL search-path surprises.
+- `onnxruntime` ships its own thread pool, so the libiomp5md.dll vs libomp140.x86_64.dll OpenMP collision that paddle/numpy/llama-cpp create in the same process becomes a non-issue.
+- Per the upstream release notes the OCR accuracy is identical.
+
+Three flags are still set at install-smoke-test time and at runtime in `scan_receipt.py` / `check_models.py` for the cases where HPI is unavailable and we fall through to `paddle_inference`:
 
 | Flag | Purpose |
 |---|---|
 | `KMP_DUPLICATE_LIB_OK=TRUE` | Tolerate the duplicate OpenMP runtime that paddle, numpy/MKL, and llama-cpp each load — without it, the process aborts with `OMP: Error #15`. |
-| `FLAGS_enable_pir_*=0` | Disable PaddlePaddle 3.0's PIR executor; PIR's CPU operator coverage is incomplete on Windows. |
+| `FLAGS_enable_pir_api=0`, `FLAGS_enable_pir_in_executor=0` | Disable PaddlePaddle 3.x's PIR executor; PIR's CPU operator coverage is incomplete on Windows. |
 
 Both files also set `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8` because the embeddable Python defaults to cp1252 and HuggingFace Hub's progress lines are non-ASCII.
 
