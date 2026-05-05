@@ -161,35 +161,42 @@ jobs:
           & .\python-runtime\python.exe -m pip install --upgrade pip
           if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed (exit $LASTEXITCODE)" }
 
-          # ── paddlepaddle: install from the *official* Paddle CDN ──────
-          # PaddleOCR's installation guide (PaddlePaddle/PaddleOCR →
-          # docs/installation.en.md) tells Windows users to install the
-          # framework from https://www.paddlepaddle.org.cn/packages/stable/cpu/
-          # rather than PyPI.  Same version number, different build:
-          # only the CDN wheel is the one the PaddlePaddle team builds and
-          # tests for Windows production deployment, and it includes the
-          # paddle_inference DLLs that paddleocr needs to load.  The PyPI
-          # mirror is a thin/legacy build that is missing pieces of the
-          # inference runtime on Windows.
-          # 3.1.x is the first series with full PP-OCRv5 Windows support.
-          Write-Host "  Installing paddlepaddle from official Paddle CDN..."
+          # ── paddlepaddle: install per official PaddleOCR v3.x guide ───
+          # Source of truth:
+          #   https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/installation.en.md
+          # The v3.x Windows install spec is:
+          #   python -m pip install paddlepaddle==3.1.1 \
+          #       -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
+          # Pinned exact (not >=3.1.0): the CDN serves a single tested
+          # build per minor version and the PaddleOCR HPI plugins are
+          # qualified against that exact framework version.  Same number on
+          # PyPI is a different build that is missing parts of the
+          # paddle_inference runtime on Windows.
+          Write-Host "  Installing paddlepaddle==3.1.1 from official Paddle CDN..."
           & .\python-runtime\python.exe -m pip install `
-              --index-url https://www.paddlepaddle.org.cn/packages/stable/cpu/ `
-              --extra-index-url https://pypi.org/simple `
-              "paddlepaddle>=3.1.0,<3.2.0"
+              -i https://www.paddlepaddle.org.cn/packages/stable/cpu/ `
+              "paddlepaddle==3.1.1"
           if ($LASTEXITCODE -ne 0) { throw "paddlepaddle CDN install failed (exit $LASTEXITCODE)" }
 
-          # ── onnxruntime backend for PaddleOCR HPI ────────────────────
-          # Install onnxruntime + paddle2onnx ahead of paddleocr so that
-          # PaddleOCR's HPI layer detects them on first instantiation and
-          # converts the PP-OCRv5 weights to ONNX once instead of falling
-          # back to paddle_inference (which crashes on Windows CPU per
-          # the PIR coverage gap).  scan_receipt.py / check_models.py
-          # then pass enable_hpi=True, hpi_config={"backend":"onnxruntime"}.
-          Write-Host "  Installing onnxruntime + paddle2onnx (Windows HPI backend)..."
-          & .\python-runtime\python.exe -m pip install `
-              "onnxruntime>=1.18.0" "paddle2onnx>=1.2.0"
-          if ($LASTEXITCODE -ne 0) { throw "onnxruntime install failed (exit $LASTEXITCODE)" }
+          # ── paddleocr ────────────────────────────────────────────────
+          # The v3.x install guide installs paddleocr separately, *after*
+          # the framework.  No version pin in the guide — the latest
+          # paddleocr always supports the matching paddlepaddle minor.
+          Write-Host "  Installing paddleocr..."
+          & .\python-runtime\python.exe -m pip install paddleocr
+          if ($LASTEXITCODE -ne 0) { throw "paddleocr install failed (exit $LASTEXITCODE)" }
+
+          # ── PaddleOCR HPI plugins (v3.x official subcommand) ─────────
+          # The v3.x guide does NOT recommend `pip install onnxruntime
+          # paddle2onnx` directly.  Instead it provides a CLI that pulls in
+          # the exact ONNX Runtime + paddle2onnx + plugin glue that match
+          # the paddleocr/paddlepaddle versions installed above:
+          #   paddleocr install_hpi_deps cpu
+          # Using the subcommand keeps us inside the supported matrix and
+          # avoids version drift if upstream re-pins their HPI deps.
+          Write-Host "  Installing PaddleOCR HPI deps (CPU / onnxruntime)..."
+          & .\python-runtime\python.exe -m paddleocr install_hpi_deps cpu
+          if ($LASTEXITCODE -ne 0) { throw "paddleocr install_hpi_deps cpu failed (exit $LASTEXITCODE)" }
 
           # ── llama-cpp-python: prebuilt CPU wheel from abetlen index ──
           # llama-cpp-python does NOT publish prebuilt wheels on PyPI; pip
@@ -202,8 +209,6 @@ jobs:
           #   --only-binary llama-cpp-python  refuses to fall back to sdist
           #                                   for this package even if pip
           #                                   thinks a newer sdist exists
-          # Install it before -r requirements.txt so the subsequent pass
-          # sees the version constraint as already satisfied.
           Write-Host "  Installing llama-cpp-python from prebuilt CPU wheel..."
           & .\python-runtime\python.exe -m pip install `
               --only-binary llama-cpp-python `
@@ -211,12 +216,16 @@ jobs:
               "llama-cpp-python>=0.3.0"
           if ($LASTEXITCODE -ne 0) { throw "llama-cpp-python wheel install failed (exit $LASTEXITCODE)" }
 
-          Write-Host "  Installing remaining dependencies from PyPI..."
-          # Repeat --only-binary llama-cpp-python + its wheel index, and
-          # add the Paddle CDN as an extra index, so that pip's resolver
-          # doesn't silently downgrade/upgrade either of the three special
-          # packages back to a broken default while resolving
-          # requirements.txt.  Default index stays PyPI for everything else.
+          # ── Final sweep: numpy / pillow / pandas / tqdm / hf-hub ─────
+          # paddlepaddle, paddleocr, onnxruntime, paddle2onnx and
+          # llama-cpp-python are already installed at the exact versions
+          # the v3.x guide and the abetlen index produced; pip without
+          # --upgrade defaults to leaving installed packages alone, so
+          # this pass only fills in the small pure-Python deps that
+          # requirements.txt declares.  The two index URLs are repeated
+          # defensively so a transitive resolve (e.g. paddleocr pulling a
+          # newer paddlepaddle on Windows) still goes to the right index.
+          Write-Host "  Filling in remaining dependencies (numpy/pillow/etc)..."
           & .\python-runtime\python.exe -m pip install `
               --only-binary llama-cpp-python `
               --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu `

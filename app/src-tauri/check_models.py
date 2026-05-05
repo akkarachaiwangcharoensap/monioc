@@ -48,6 +48,15 @@ if sys.platform == "win32":
     # without these.
     os.environ.setdefault("PYTHONUTF8", "1")
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    # Without Developer Mode, Windows requires elevation to create symlinks;
+    # huggingface_hub falls back to file copies but otherwise prints a
+    # multi-line warning every download.  The data still lands correctly in
+    # blobs/ — silence the noise so scan progress stays readable.
+    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+    # hf_transfer is an optional Rust accelerator that is not bundled in the
+    # embeddable runtime; force the pure-Python downloader so an opportunistic
+    # `import hf_transfer` does not raise mid-download and corrupt progress.
+    os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "0")
 
 # Module-level error collector: populated by the download functions and
 # included in the final JSON status so the frontend can surface the exact
@@ -79,7 +88,11 @@ def _is_macos_intel() -> bool:
 # ── Default model identifiers (must match scan_receipt.py) ────────────────────
 
 _DEFAULT_MLX_MODEL = "mlx-community/Ministral-3-8B-Instruct-2512-4bit"
-_DEFAULT_GGUF_MODEL = "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF"
+# Match the MLX model on Apple Silicon — bartowski's GGUF conversion of the
+# same Mistral Ministral-3-8B Instruct (Dec 2025) checkpoint.  Keeping the
+# defaults aligned across backends means scan_receipt.py produces the same
+# extraction quality on Windows/Linux (llama-cpp) as on macOS (MLX).
+_DEFAULT_GGUF_MODEL = "bartowski/mistralai_Ministral-3-8B-Instruct-2512-GGUF"
 _DEFAULT_GGUF_FILENAME = "*Q4_K_M.gguf"
 
 # ── Known sizes for progress polling ─────────────────────────────────────────
@@ -89,10 +102,17 @@ _OCR_EXPECTED_BYTES = 103_400_000   # ~103 MB
 _OCR_EXPECTED_FILES = 40
 
 def _llm_expected_bytes() -> int:
-    """Expected LLM download size for the current platform."""
+    """Expected LLM download size for the current platform.
+
+    Used purely to drive the UI progress bar; an off-by-100 MB estimate
+    only changes the bar's reported percentage, not correctness.
+    """
     if _is_apple_silicon():
         return 5_634_000_000  # ~5.63 GB — MLX 4-bit 8B (multiple weight shards + metadata)
-    return 4_920_000_000      # ~4.92 GB — GGUF Q4_K_M single file (Windows / Linux)
+    # Ministral-3 8B Q4_K_M ≈ 4.68 GB — single .gguf in the bartowski repo.
+    # Slightly smaller than Llama-3.1 8B Q4_K_M because Ministral has fewer
+    # embeddings, but close enough that the progress bar feels accurate.
+    return 4_700_000_000      # ~4.7 GB — GGUF Q4_K_M single file (Windows / Linux)
 
 def _llm_expected_files() -> int:
     """Expected number of files in the LLM download for the current platform."""
@@ -197,27 +217,59 @@ def _hf_model_is_cached(repo_id: str) -> bool:
         return False
 
 def _llm_gguf_snapshot_present(repo_id: str) -> bool:
-    """Return True if the Q4_K_M file is resolvable in the HF snapshots tree.
+    """Return True if the Q4_K_M file is fully on disk and loadable.
 
     An old partial download (before allow_patterns was added) may have fetched
     different quantisation variants but not the Q4_K_M file we actually need.
+
+    Resolution order:
+      1. ``snapshots/<rev>/<file>`` — the canonical layout HF Hub creates
+         when symlinks are available.  ``f.resolve()`` follows the symlink
+         to the actual blob.
+      2. ``blobs/`` direct scan — Windows without Developer Mode can't make
+         symlinks, so HF Hub leaves the bytes only in ``blobs/`` and skips
+         the snapshot entry.  Treat any single file ≥ 4 GB as the Q4_K_M
+         we asked for (no other file in this repo would be that large with
+         our ``allow_patterns`` filter).
+
+    The blob fallback is the fix for the "download finishes at ~100 MB"
+    symptom: previously ``_llm_model_present`` returned False on a successful
+    Windows download because step 1 couldn't find the snapshot symlink, so
+    the UI re-entered the download flow on every check and never reflected
+    the bytes already on disk.
     """
     import fnmatch
     gguf_pattern = os.environ.get("RECEIPT_LLM_GGUF_FILENAME", _DEFAULT_GGUF_FILENAME)
-    snapshots_dir = _llm_hf_cache_dir(repo_id) / "snapshots"
-    if not snapshots_dir.is_dir():
-        return False
-    for rev_dir in snapshots_dir.iterdir():
-        if not rev_dir.is_dir():
-            continue
-        for f in rev_dir.iterdir():
-            if fnmatch.fnmatch(f.name, gguf_pattern):
-                try:
-                    target = f.resolve()
-                    # Blob must be at least 4 GB to be a complete Q4_K_M download.
-                    return target.exists() and target.stat().st_size > 4_000_000_000
-                except OSError:
-                    pass
+    cache_dir = _llm_hf_cache_dir(repo_id)
+    min_bytes = 4_000_000_000  # Q4_K_M for an 8B model is ~4.9 GB
+
+    snapshots_dir = cache_dir / "snapshots"
+    if snapshots_dir.is_dir():
+        for rev_dir in snapshots_dir.iterdir():
+            if not rev_dir.is_dir():
+                continue
+            for f in rev_dir.iterdir():
+                if fnmatch.fnmatch(f.name, gguf_pattern):
+                    try:
+                        target = f.resolve()
+                        if target.exists() and target.stat().st_size > min_bytes:
+                            return True
+                    except OSError:
+                        pass
+
+    # Windows fallback — no snapshot symlink available; scan blobs/ directly.
+    # HF Hub's allow_patterns filter ensured nothing else of this size could
+    # have landed here.
+    blobs_dir = cache_dir / "blobs"
+    if blobs_dir.is_dir():
+        for f in blobs_dir.iterdir():
+            if not f.is_file() or f.suffix == ".incomplete":
+                continue
+            try:
+                if f.stat().st_size > min_bytes:
+                    return True
+            except OSError:
+                pass
     return False
 
 def _llm_model_present() -> bool:

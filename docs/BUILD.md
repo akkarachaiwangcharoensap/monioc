@@ -79,13 +79,17 @@ The Windows installer ships a self-contained Python 3.12 + AI dependencies insid
 
 Tauri's `interpreter.rs` resolver prefers `<resource_dir>/python-runtime/python.exe` over any system Python on Windows, so the bundled runtime is always used at runtime regardless of what the user has installed.
 
-The bundled stack:
+The bundled stack on Windows is installed in the exact order specified by PaddleOCR's [v3.x installation guide](https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/installation.en.md):
 
-- `paddlepaddle>=3.1.0` — CPU build, **installed from the official Paddle CDN** (`https://www.paddlepaddle.org.cn/packages/stable/cpu/`), not PyPI. PaddleOCR's installation guide tells Windows users to use the CDN; same version number, different build — only the CDN wheel includes the full `paddle_inference` runtime that paddleocr loads on Windows. PP-OCRv5 Windows support landed in 3.1.0/3.1.1.
-- `paddleocr>=3.4.0` — text-recognition models download to `~/.paddlex/official_models` on first launch (~100 MB).
-- `onnxruntime>=1.18.0` + `paddle2onnx>=1.2.0` — **Windows-only.** PaddleOCR's High-Performance Inference (HPI) layer detects these at OCR construction time and runs PP-OCRv5 weights through ONNX Runtime instead of `paddle_inference`. This is the deployment path the PaddleOCR team officially supports for Windows production (per the PP-OCRv5 release notes: "feature parity and identical accuracy to the Python implementation"). `scan_receipt.py` and `check_models.py` pass `enable_hpi=True, hpi_config={"backend": "onnxruntime"}` to the `PaddleOCR()` constructor on Windows; everywhere else the constructor falls back to `paddle_inference`.
-- `llama-cpp-python>=0.3.0` — CPU build from the abetlen wheel index (PyPI does not publish prebuilt Windows wheels).
-- `numpy==1.26.4`, `pillow`, `huggingface_hub`, `pandas`, `tqdm`.
+1. `paddlepaddle==3.1.1` — **installed from the official Paddle CDN** (`https://www.paddlepaddle.org.cn/packages/stable/cpu/`), not PyPI. The v3.x guide is explicit about this; same version number on PyPI is a different build that is missing parts of the `paddle_inference` runtime on Windows. Pinned exact (not `>=`) because the CDN serves a single tested build per minor and the HPI plugins below are qualified against it.
+2. `paddleocr` — plain `pip install paddleocr` from PyPI, no version pin per the guide.
+3. `paddleocr install_hpi_deps cpu` — the v3.x **CLI subcommand** for High-Performance Inference plugins. Pulls in ONNX Runtime + paddle2onnx + the binding glue at the exact versions paddleocr is qualified against. We do **not** install `onnxruntime` / `paddle2onnx` ourselves on Windows — that would risk version drift away from upstream's tested matrix.
+4. `llama-cpp-python>=0.3.0` — CPU build from the abetlen wheel index (PyPI does not publish prebuilt Windows wheels).
+5. `numpy==1.26.4`, `pillow`, `huggingface_hub`, `pandas`, `tqdm` — the small pure-Python deps from `requirements.txt`. This pass runs without `--upgrade` so the four packages above stay at the exact versions step 1–4 produced.
+
+Runtime: `scan_receipt.py` and `check_models.py` detect that `onnxruntime` is importable and pass `enable_hpi=True, hpi_config={"backend": "onnxruntime"}` to `PaddleOCR(...)`. PaddleOCR converts the PP-OCRv5 weights to ONNX once on first instantiation and runs every subsequent inference through ONNX Runtime instead of `paddle_inference` — feature-parity and accuracy-parity per the upstream release notes.
+
+LLM model: the GGUF default is **`bartowski/mistralai_Ministral-3-8B-Instruct-2512-GGUF`** (Q4_K_M, ~4.7 GB), the GGUF conversion of the same Ministral-3 8B Instruct checkpoint that the macOS MLX backend uses. Keeping both backends on the same checkpoint means receipt extraction quality is identical across platforms.
 
 Why ONNX Runtime on Windows specifically:
 

@@ -86,6 +86,12 @@ if sys.platform == "win32":
     # and any non-ASCII model path then raise UnicodeEncodeError mid-download.
     os.environ.setdefault("PYTHONUTF8", "1")
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    # HF Hub falls back to copies (instead of symlinks) without admin /
+    # Developer Mode and otherwise prints a noisy warning each download.
+    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+    # hf_transfer is an optional Rust accelerator we don't bundle; force
+    # pure-Python downloads so an opportunistic import doesn't trip mid-pull.
+    os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "0")
 
 # ─── Platform detection ───────────────────────────────────────────────────────
 
@@ -153,11 +159,21 @@ _DEFAULT_OLLAMA_MODEL: str = "ministral-3:8b"
 _DEFAULT_MLX_MODEL: str = "mlx-community/Ministral-3-8B-Instruct-2512-4bit"
 """Default MLX model identifier (Apple Silicon only)."""
 
-_DEFAULT_GGUF_MODEL: str = "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF"
-"""Default GGUF model repository on HuggingFace (Windows/Linux)."""
+_DEFAULT_GGUF_MODEL: str = "bartowski/mistralai_Ministral-3-8B-Instruct-2512-GGUF"
+"""Default GGUF model repository on HuggingFace (Windows/Linux).
+
+Mirrors the macOS Apple Silicon MLX choice (``mlx-community/Ministral-3-8B-
+Instruct-2512-4bit``) so the LLM behaviour is consistent across platforms —
+same model family, same instruction tuning, same prompt expectations.
+"""
 
 _DEFAULT_GGUF_FILENAME: str = "*Q4_K_M.gguf"
-"""Default GGUF filename glob pattern within the repository."""
+"""Default GGUF filename glob pattern within the repository.
+
+Q4_K_M is the recommended quantisation for an 8B model on consumer
+hardware: ~4.9 GB on disk, single-file (not sharded), fits comfortably in
+memory on a 16 GB machine.
+"""
 
 # ─── Progress reporting ───────────────────────────────────────────────────────
 
