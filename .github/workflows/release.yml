@@ -119,6 +119,18 @@ jobs:
       - name: Bundle Python runtime + AI dependencies
         shell: pwsh
         working-directory: app/src-tauri
+        env:
+          # Force pip to refuse source distributions for any package and use
+          # only prebuilt wheels.  Saves ~20 minutes of from-source builds and
+          # avoids needing Visual Studio + CMake on the runner.  Per-package
+          # overrides below remain authoritative for llama-cpp-python.
+          PIP_PREFER_BINARY: "1"
+          # The bundled python.exe will be invoked by Tauri at runtime with
+          # whatever encoding the user's locale defaults to.  Pinning UTF-8
+          # here too keeps the install logs readable when paddlepaddle or
+          # huggingface_hub print non-ASCII progress lines.
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: "utf-8"
         run: |
           $ErrorActionPreference = "Stop"
           $ProgressPreference = "SilentlyContinue"
@@ -169,8 +181,27 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "llama-cpp-python wheel install failed (exit $LASTEXITCODE)" }
 
           Write-Host "  Installing remaining dependencies from PyPI..."
-          & .\python-runtime\python.exe -m pip install -r ../data/requirements.txt
+          # Repeat --only-binary llama-cpp-python and the wheel index here:
+          # requirements.txt declares `llama-cpp-python>=0.3.0` and pip will
+          # otherwise re-resolve and silently upgrade to a newer PyPI sdist,
+          # triggering the same scikit-build-core failure we fought above.
+          & .\python-runtime\python.exe -m pip install `
+              --only-binary llama-cpp-python `
+              --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu `
+              -r ../data/requirements.txt
           if ($LASTEXITCODE -ne 0) { throw "pip install failed (exit $LASTEXITCODE)" }
+
+          # Smoke-import the runtime stack so a broken bundle fails the build
+          # instead of shipping an installer that crashes on the user's
+          # machine.  KMP_DUPLICATE_LIB_OK matches the runtime guard set in
+          # scan_receipt.py / check_models.py — without it the import below
+          # aborts the runner with `OMP: Error #15`.
+          Write-Host "Smoke-testing AI runtime imports..."
+          $env:KMP_DUPLICATE_LIB_OK = "TRUE"
+          $env:FLAGS_enable_pir_api = "0"
+          $env:FLAGS_enable_pir_in_executor = "0"
+          & .\python-runtime\python.exe -c "import paddle, paddleocr, llama_cpp, huggingface_hub, PIL, numpy; print('paddle', paddle.__version__); print('paddleocr', paddleocr.__version__); print('numpy', numpy.__version__)"
+          if ($LASTEXITCODE -ne 0) { throw "AI runtime smoke import failed (exit $LASTEXITCODE)" }
 
           # Pre-compile bytecode so __pycache__ exists alongside .py files —
           # otherwise Python tries to write to Program Files at runtime, which

@@ -73,6 +73,20 @@ from typing import Any, Dict
 os.environ.setdefault("FLAGS_enable_pir_api", "0")
 os.environ.setdefault("FLAGS_enable_pir_in_executor", "0")
 
+# Windows-only runtime hardening.  These must be set before paddle/numpy/
+# llama-cpp are imported.
+if sys.platform == "win32":
+    # paddlepaddle, numpy/MKL and llama-cpp each ship their own OpenMP runtime.
+    # Loading more than one libomp into the same process aborts with
+    #   OMP: Error #15: Initializing libiomp5md.dll, but found …
+    # Telling the Intel runtime to tolerate the duplicate is the documented fix.
+    os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+    # Embeddable Python on Windows defaults stdout/stderr and the filesystem
+    # encoding to cp1252.  HuggingFace Hub progress lines, paddlex log strings
+    # and any non-ASCII model path then raise UnicodeEncodeError mid-download.
+    os.environ.setdefault("PYTHONUTF8", "1")
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
 # ─── Platform detection ───────────────────────────────────────────────────────
 
 

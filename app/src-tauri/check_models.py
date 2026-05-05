@@ -38,6 +38,17 @@ from pathlib import Path
 os.environ.setdefault("FLAGS_enable_pir_api", "0")
 os.environ.setdefault("FLAGS_enable_pir_in_executor", "0")
 
+# Windows-only runtime hardening — kept in lockstep with scan_receipt.py.
+if sys.platform == "win32":
+    # Avoid `OMP: Error #15` when paddle, numpy/MKL and llama-cpp each load
+    # their own OpenMP DLL into the same process.
+    os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+    # Embeddable Python defaults to cp1252; HF Hub progress lines and paddle
+    # log strings contain non-ASCII characters and raise UnicodeEncodeError
+    # without these.
+    os.environ.setdefault("PYTHONUTF8", "1")
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
 # Module-level error collector: populated by the download functions and
 # included in the final JSON status so the frontend can surface the exact
 # failure reason to the user (production builds have no console).

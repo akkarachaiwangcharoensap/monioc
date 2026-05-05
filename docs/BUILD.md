@@ -73,6 +73,28 @@ npm run tauri:build
 
 > Windows binaries must be built on a Windows machine or via the GitHub Actions release workflow. Cross-compiling from macOS/Linux to Windows is not supported.
 
+### Bundled Python runtime
+
+The Windows installer ships a self-contained Python 3.12 + AI dependencies inside the `.exe` so end-users do not need Python installed. The runtime is built by `.github/workflows/release.yml` (Windows job) into `app/src-tauri/python-runtime/` before `tauri build` runs.
+
+Tauri's `interpreter.rs` resolver prefers `<resource_dir>/python-runtime/python.exe` over any system Python on Windows, so the bundled runtime is always used at runtime regardless of what the user has installed.
+
+The bundled stack:
+
+- `paddlepaddle>=3.0.0` — CPU build (PyPI wheel)
+- `paddleocr>=3.4.0` — text recognition models download to `~/.paddlex/official_models` on first launch (~100 MB)
+- `llama-cpp-python>=0.3.0` — CPU build from the abetlen wheel index (PyPI does not publish prebuilt Windows wheels)
+- `numpy==1.26.4`, `pillow`, `huggingface_hub`, `pandas`, `tqdm`
+
+Two flags are critical and set both at install-smoke-test time and at runtime in `scan_receipt.py` / `check_models.py`:
+
+| Flag | Purpose |
+|---|---|
+| `KMP_DUPLICATE_LIB_OK=TRUE` | Tolerate the duplicate OpenMP runtime that paddle, numpy/MKL, and llama-cpp each load — without it, the process aborts with `OMP: Error #15`. |
+| `FLAGS_enable_pir_*=0` | Disable PaddlePaddle 3.0's PIR executor; PIR's CPU operator coverage is incomplete on Windows. |
+
+Both files also set `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8` because the embeddable Python defaults to cp1252 and HuggingFace Hub's progress lines are non-ASCII.
+
 ---
 
 ## Linux

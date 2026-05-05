@@ -12,6 +12,9 @@ This guide covers everything needed to run Monioc from source on macOS, Windows,
 |---|---|---|
 | Node.js | 20.x | https://nodejs.org |
 | Rust (stable) | latest stable | `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` |
+| Python | 3.11 (3.12 recommended) | https://www.python.org/downloads/ |
+
+> Windows users: install Python with the **"Add python.exe to PATH"** and **"py launcher"** options checked. The build script auto-detects either `python` on PATH or `py -3.12`.
 
 ### macOS
 

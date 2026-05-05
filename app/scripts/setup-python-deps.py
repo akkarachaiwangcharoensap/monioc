@@ -77,19 +77,52 @@ def meets_min(exe: str) -> bool:
     return v is not None and v >= MIN_VERSION
 
 
+def _resolve_py_launcher(version_arg: str) -> str | None:
+    """Resolve `py <version_arg>` to the actual interpreter path on Windows.
+
+    The Windows Python launcher (``py.exe``) is the canonical way to find an
+    installed CPython on Windows — most users do not put per-version
+    ``python3.12.exe`` shims on PATH.  ``py -3.12 -c "import sys; print(sys.executable)"``
+    returns the full interpreter path which we can then re-use as the venv
+    base interpreter (``python -m venv`` requires a real interpreter path,
+    not the launcher).
+    """
+    launcher = shutil.which("py")
+    if not launcher:
+        return None
+    try:
+        out = subprocess.check_output(
+            [launcher, version_arg, "-c", "import sys; print(sys.executable)"],
+            stderr=subprocess.DEVNULL, text=True, timeout=5,
+        ).strip()
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+        return None
+    return out if out and meets_min(out) else None
+
+
 def find_python(requested: str) -> str:
     if meets_min(requested):
         return requested
 
-    candidates = (
-        ["python3.13", "python3.12", "python3.11",
-         "/opt/homebrew/bin/python3.13", "/opt/homebrew/bin/python3.12", "/opt/homebrew/bin/python3.11"]
-        if _system != "Windows"
-        else ["python3.13", "python3.12", "python3.11", "python3", "python"]
-    )
+    if _system == "Windows":
+        candidates: list[str] = ["python3.13", "python3.12", "python3.11", "python3", "python"]
+    else:
+        candidates = [
+            "python3.13", "python3.12", "python3.11",
+            "/opt/homebrew/bin/python3.13", "/opt/homebrew/bin/python3.12", "/opt/homebrew/bin/python3.11",
+        ]
     for c in candidates:
         if shutil.which(c) and meets_min(c):
             return c
+
+    # Windows fallback: probe the `py` launcher.  This is how most Windows
+    # users have Python installed — `py -3.12` works even when no per-version
+    # python3.12.exe exists on PATH.
+    if _system == "Windows":
+        for arg in ("-3.13", "-3.12", "-3.11", "-3"):
+            resolved = _resolve_py_launcher(arg)
+            if resolved:
+                return resolved
 
     v = python_version(requested)
     ver_str = f"{v[0]}.{v[1]}" if v else "unknown"
