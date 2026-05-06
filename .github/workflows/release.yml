@@ -68,10 +68,12 @@ jobs:
           path: Monioc.dmg
 
   # ── Windows (.exe) ───────────────────────────────────────────────────────────
-  # Mirrors the macOS job: the installer ships only the Tauri app + Python
-  # scripts.  End users provide their own Python 3.11+ and run
-  # `app/scripts/setup-python-deps.py` once to populate the venv at
-  # %LOCALAPPDATA%\com.monioc-app\venv that interpreter.rs resolves at runtime.
+  # Self-contained installer: bundles a frozen Python 3.12 + paddleocr +
+  # paddlepaddle + llama-cpp-python under app/src-tauri/python-runtime/ before
+  # `tauri build`.  Tauri picks the bundle up via tauri.windows.conf.json and
+  # interpreter.rs resolves it at runtime.  All bundle logic lives in a single
+  # script (build-windows-runtime.ps1) so it is debuggable locally on Windows
+  # without having to push a tag and watch CI.
   windows:
     name: Build Windows
     runs-on: windows-latest
@@ -109,6 +111,10 @@ jobs:
       - name: Build grocery database
         working-directory: app
         run: python3 scripts/build-grocery-db.py --force
+
+      - name: Bundle Python runtime + AI dependencies
+        shell: pwsh
+        run: ./app/src-tauri/scripts/build-windows-runtime.ps1
 
       - name: Build app
         working-directory: app

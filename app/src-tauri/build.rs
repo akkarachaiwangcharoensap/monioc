@@ -15,6 +15,28 @@ fn main() {
         create_placeholder_grocery_db(db_path);
     }
 
+    // Windows: tauri.windows.conf.json declares python-runtime/ as a bundled
+    // resource.  The directory is normally populated by
+    // `scripts/build-windows-runtime.ps1` before `tauri build`, but for plain
+    // `cargo check` / IDE usage on a clean checkout it may not exist yet —
+    // create a placeholder so tauri-build's resource-existence check doesn't
+    // fail.  python::interpreter::resolve will not pick a placeholder up at
+    // runtime because `python.exe` won't exist inside it.
+    //
+    // Non-Windows targets do not declare this resource (see tauri.conf.json
+    // bundle.resources), so no placeholder is needed there.
+    #[cfg(target_os = "windows")]
+    {
+        let py_runtime_dir = Path::new("python-runtime");
+        if !py_runtime_dir.join("python.exe").exists() {
+            std::fs::create_dir_all(py_runtime_dir).ok();
+            let _ = std::fs::write(
+                py_runtime_dir.join(".placeholder"),
+                "Populated by scripts/build-windows-runtime.ps1 before tauri build.\n",
+            );
+        }
+    }
+
     tauri_build::build()
 }
 

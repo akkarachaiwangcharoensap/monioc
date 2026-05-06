@@ -19,25 +19,32 @@ const VENV_PYTHON_BINS: [&str; 2] = ["bin/python3", "bin/python"];
 ///
 /// Priority order:
 ///   1. `RECEIPT_PYTHON` env var (explicit override)
-///   2. Active `VIRTUAL_ENV` interpreter
+///   2. Active `VIRTUAL_ENV` interpreter (only if it has `pyvenv.cfg`)
 ///   3. `venv312` / `venv` directories in ancestors of `script_path` (up to 8)
-///   4. `<app_cache_dir>/venv[312]/...` — venv populated by
-///      `app/scripts/setup-python-deps.py`.  Path is identical on every
-///      platform, only the per-platform `app_cache_dir` differs:
-///        - macOS:   ~/Library/Caches/com.monioc-app/venv
-///        - Windows: %LOCALAPPDATA%/com.monioc-app/venv
-///        - Linux:   ~/.cache/com.monioc-app/venv
-///   5. `"python3"` / `"python"` system fallback
+///   4. `<resource_dir>/python-runtime/python.exe` — Windows bundled runtime
+///      shipped by the NSIS installer.  See
+///      `app/src-tauri/scripts/build-windows-runtime.ps1` for the bundle
+///      contents.  Always preferred over system Python on Windows so we
+///      never fall through to a user install missing paddleocr / paddlepaddle.
+///   5. `<app_cache_dir>/venv[312]/...` — venv populated by
+///      `app/scripts/setup-python-deps.py` (macOS / Linux dev + prod).
+///   6. `"python3"` / `"python"` system fallback.
 ///
 /// In production the `.app` / `.exe` bundle places scripts at the platform
 /// resource directory, whose ancestor chain contains no virtualenv.  Pass the
-/// Tauri `app_cache_dir` so the user-managed venv is found at step 4.
-pub fn resolve(script_path: &Path, app_cache_dir: Option<&Path>) -> String {
+/// Tauri `app_cache_dir` so the macOS / Linux venv is found at step 5, and
+/// `resource_dir` so the Windows bundled runtime is found at step 4.
+pub fn resolve(
+    script_path: &Path,
+    app_cache_dir: Option<&Path>,
+    resource_dir: Option<&Path>,
+) -> String {
     resolve_with_env(
         script_path,
         &std::env::var("RECEIPT_PYTHON").ok(),
         &std::env::var("VIRTUAL_ENV").ok(),
         app_cache_dir,
+        resource_dir,
     )
 }
 
@@ -48,16 +55,26 @@ pub(crate) fn resolve_with_env(
     receipt_python: &Option<String>,
     virtual_env: &Option<String>,
     app_cache_dir: Option<&Path>,
+    resource_dir: Option<&Path>,
 ) -> String {
     if let Some(explicit) = receipt_python.as_deref().filter(|s| !s.trim().is_empty()) {
         return explicit.to_string();
     }
 
+    // Only treat VIRTUAL_ENV as authoritative when it points at a real venv
+    // (one with a `pyvenv.cfg`).  pyenv-init exports VIRTUAL_ENV pointed at the
+    // *install root* of the active interpreter (e.g. ~/.pyenv/versions/3.9.5)
+    // even though that directory is not a venv and is missing project deps.
+    // Without this guard, pyenv users would always hit `ModuleNotFoundError:
+    // paddleocr` because the resolver prefers VIRTUAL_ENV over the
+    // app_cache_dir venv.
     if let Some(venv) = virtual_env {
-        for bin in VENV_PYTHON_BINS {
-            let p = Path::new(venv).join(bin);
-            if p.exists() {
-                return p.to_string_lossy().into_owned();
+        if Path::new(venv).join("pyvenv.cfg").exists() {
+            for bin in VENV_PYTHON_BINS {
+                let p = Path::new(venv).join(bin);
+                if p.exists() {
+                    return p.to_string_lossy().into_owned();
+                }
             }
         }
     }
@@ -76,9 +93,23 @@ pub(crate) fn resolve_with_env(
         }
     }
 
-    // Production: check the Tauri app-cache directory for a venv created by
-    // `setup-python-deps.py`.  Same lookup on macOS, Windows, and Linux —
-    // the per-platform path is hidden behind Tauri's `app_cache_dir`.
+    // Windows production: the NSIS installer ships a self-contained Python
+    // runtime (python-3.12-embed-amd64 + AI deps) inside the resource
+    // directory.  Always prefer it over system Python so we never fall
+    // through to a user install missing paddleocr / paddlepaddle.
+    #[cfg(target_os = "windows")]
+    if let Some(res_dir) = resource_dir {
+        let p = res_dir.join("python-runtime").join("python.exe");
+        if p.exists() {
+            return p.to_string_lossy().into_owned();
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = resource_dir;
+
+    // macOS / Linux production: check the Tauri app-cache directory for a
+    // venv created by `setup-python-deps.py`.  On macOS this is
+    // ~/Library/Caches/<bundle-id>/venv[312].
     if let Some(data_dir) = app_cache_dir {
         for venv_dir in PROJECT_VENV_DIRS {
             for bin in VENV_PYTHON_BINS {
@@ -105,6 +136,7 @@ mod tests {
             &Some("/custom/python".to_string()),
             &Some("/venv".to_string()),
             None,
+            None,
         );
         assert_eq!(result, "/custom/python");
     }
@@ -116,6 +148,7 @@ mod tests {
             &Some("   ".to_string()),
             &None,
             None,
+            None,
         );
         let expected = if cfg!(target_os = "windows") { "python" } else { "python3" };
         assert_eq!(result, expected);
@@ -123,7 +156,8 @@ mod tests {
 
     #[test]
     fn fallback_is_platform_python() {
-        let result = resolve_with_env(Path::new("/nowhere/script.py"), &None, &None, None);
+        let result =
+            resolve_with_env(Path::new("/nowhere/script.py"), &None, &None, None, None);
         let expected = if cfg!(target_os = "windows") { "python" } else { "python3" };
         assert_eq!(result, expected);
     }

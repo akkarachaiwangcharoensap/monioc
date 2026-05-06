@@ -73,30 +73,40 @@ npm run tauri:build
 
 > Windows binaries must be built on a Windows machine or via the GitHub Actions release workflow. Cross-compiling from macOS/Linux to Windows is not supported.
 
-### Python venv (user-managed, like macOS)
+### Bundled Python runtime
 
-The Windows installer **does not bundle Python**. It mirrors the macOS pattern: end users install Python 3.11+ themselves, then run the cross-platform setup script once to populate a virtualenv at `%LOCALAPPDATA%\com.monioc-app\venv`. At runtime [`python::interpreter::resolve`](../app/src-tauri/src/python/interpreter.rs) finds that venv via Tauri's `app_cache_dir`.
+The Windows NSIS installer ships a self-contained Python 3.12 + AI dependencies inside the `.exe` so end users do not need Python installed. Bundle layout (~1.2 GB):
 
-End-user setup (one time):
-
-```powershell
-# After installing Monioc-setup.exe, from the cloned repo or the Monioc Resources dir:
-python scripts\setup-python-deps.py
+```
+app/src-tauri/python-runtime/
+  python.exe                       (10 MB embeddable)
+  python312.dll, python312.zip, ...
+  python312._pth                   (with `import site` enabled)
+  Lib/site-packages/               (paddleocr, paddlepaddle, llama-cpp-python, ...)
 ```
 
-The script:
+[`tauri.windows.conf.json`](../app/src-tauri/tauri.windows.conf.json) is the **only** Tauri config that declares this resource — the macOS / Linux bundles never include it. At runtime [`python::interpreter::resolve`](../app/src-tauri/src/python/interpreter.rs) prefers `<resource_dir>/python-runtime/python.exe` over any system Python on Windows, so the bundled runtime is used regardless of what the user has installed.
 
-1. Locates a usable Python 3.11+ (PATH, then the `py` launcher: `py -3.13`, `-3.12`, `-3.11`).
-2. Creates a venv at `%LOCALAPPDATA%\com.monioc-app\venv`.
-3. Runs `pip install -r app/data/requirements.txt`. Per `sys_platform == "win32"` markers in `requirements.txt`, this resolves to:
-   - `paddlepaddle>=3.1.0`
-   - `paddleocr>=3.4.0`
-   - `onnxruntime>=1.18.0` + `paddle2onnx>=1.2.0` (Windows-only — enables PaddleOCR's High-Performance Inference path)
-   - `llama-cpp-python>=0.3.0` (CPU; for CUDA see the comment in `requirements.txt`)
-   - `numpy==1.26.4`, `pillow`, `pandas`, `tqdm`
-4. Pre-downloads PaddleOCR + LLM weights via `check_models.py --download` so first launch does not stall.
+#### Building the runtime
 
-If you want the same exact-version stack the previous bundled installer used, follow PaddleOCR's [v3.x installation guide](https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/installation.en.md) instead — pin `paddlepaddle==3.1.1` from the official Paddle CDN (`https://www.paddlepaddle.org.cn/packages/stable/cpu/`) and run `paddleocr install_hpi_deps cpu` for the HPI plugins. The default `requirements.txt` resolution works for most users; the pinned path is the upstream-supported reference matrix.
+The bundle is produced by a single PowerShell script — [`scripts/build-windows-runtime.ps1`](../app/src-tauri/scripts/build-windows-runtime.ps1) — which is called from the GitHub Actions Windows job before `tauri build`. The same script can be run locally on a Windows machine to debug bundle issues without going through CI:
+
+```powershell
+pwsh app/src-tauri/scripts/build-windows-runtime.ps1
+# or with a custom embeddable Python version:
+pwsh app/src-tauri/scripts/build-windows-runtime.ps1 -PythonVersion 3.12.7
+```
+
+The script installs in the exact order specified by PaddleOCR's [v3.x installation guide](https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/installation.en.md):
+
+1. **Python 3.12 embeddable** — extracted from `python.org/ftp/python/$PythonVersion/python-$PythonVersion-embed-amd64.zip`. The `import site` line in `python312._pth` is uncommented so pip + dependencies land on `sys.path`.
+2. **`paddlepaddle==3.1.1`** — installed from the **official Paddle CDN** (`https://www.paddlepaddle.org.cn/packages/stable/cpu/`), not PyPI. The v3.x guide is explicit about this; the same version on PyPI omits parts of the `paddle_inference` runtime. Pinned exact (not `>=`) because the CDN serves a single tested build per minor and the HPI plugins below are qualified against it.
+3. **`paddleocr`** — plain `pip install paddleocr` from PyPI, no version pin per the guide.
+4. **`paddleocr install_hpi_deps cpu`** — the v3.x **CLI subcommand** that pulls in ONNX Runtime + paddle2onnx + the binding glue at the exact versions paddleocr is qualified against. We do **not** install `onnxruntime` / `paddle2onnx` ourselves — that would risk version drift away from upstream's tested matrix.
+5. **`llama-cpp-python>=0.3.0`** — CPU build from the abetlen wheel index (PyPI does not publish prebuilt Windows wheels). `--only-binary llama-cpp-python` refuses sdist fallback for this package because the from-source build needs scikit-build-core + Visual Studio + CMake.
+6. **`numpy==1.26.4`, `pillow`, `huggingface_hub`, `pandas`, `tqdm`** — small pure-Python deps from `requirements.txt`. This pass runs without `--upgrade` so steps 2-5 stay at the exact versions they produced.
+
+After install the script runs a smoke import (`import paddle, paddleocr, llama_cpp, ...; assert 'CPUExecutionProvider' in onnxruntime.get_available_providers()`) so a broken bundle fails the build instead of shipping a crashing installer. It then pre-compiles bytecode with `compileall` — without this Python tries to write `__pycache__` next to .py at first import, which fails silently under "Program Files" and slows every launch.
 
 LLM model: the GGUF default is **`bartowski/mistralai_Ministral-3-8B-Instruct-2512-GGUF`** (Q4_K_M, ~4.7 GB), the GGUF conversion of the same Ministral-3 8B Instruct checkpoint that the macOS MLX backend uses. Receipt extraction quality is therefore identical across platforms.
 
