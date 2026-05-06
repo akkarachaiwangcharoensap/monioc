@@ -73,39 +73,49 @@ npm run tauri:build
 
 > Windows binaries must be built on a Windows machine or via the GitHub Actions release workflow. Cross-compiling from macOS/Linux to Windows is not supported.
 
-### Bundled Python runtime
+### Python venv (user-managed, like macOS)
 
-The Windows installer ships a self-contained Python 3.12 + AI dependencies inside the `.exe` so end-users do not need Python installed. The runtime is built by `.github/workflows/release.yml` (Windows job) into `app/src-tauri/python-runtime/` before `tauri build` runs.
+The Windows installer **does not bundle Python**. It mirrors the macOS pattern: end users install Python 3.11+ themselves, then run the cross-platform setup script once to populate a virtualenv at `%LOCALAPPDATA%\com.monioc-app\venv`. At runtime [`python::interpreter::resolve`](../app/src-tauri/src/python/interpreter.rs) finds that venv via Tauri's `app_cache_dir`.
 
-Tauri's `interpreter.rs` resolver prefers `<resource_dir>/python-runtime/python.exe` over any system Python on Windows, so the bundled runtime is always used at runtime regardless of what the user has installed.
+End-user setup (one time):
 
-The bundled stack on Windows is installed in the exact order specified by PaddleOCR's [v3.x installation guide](https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/installation.en.md):
+```powershell
+# After installing Monioc-setup.exe, from the cloned repo or the Monioc Resources dir:
+python scripts\setup-python-deps.py
+```
 
-1. `paddlepaddle==3.1.1` — **installed from the official Paddle CDN** (`https://www.paddlepaddle.org.cn/packages/stable/cpu/`), not PyPI. The v3.x guide is explicit about this; same version number on PyPI is a different build that is missing parts of the `paddle_inference` runtime on Windows. Pinned exact (not `>=`) because the CDN serves a single tested build per minor and the HPI plugins below are qualified against it.
-2. `paddleocr` — plain `pip install paddleocr` from PyPI, no version pin per the guide.
-3. `paddleocr install_hpi_deps cpu` — the v3.x **CLI subcommand** for High-Performance Inference plugins. Pulls in ONNX Runtime + paddle2onnx + the binding glue at the exact versions paddleocr is qualified against. We do **not** install `onnxruntime` / `paddle2onnx` ourselves on Windows — that would risk version drift away from upstream's tested matrix.
-4. `llama-cpp-python>=0.3.0` — CPU build from the abetlen wheel index (PyPI does not publish prebuilt Windows wheels).
-5. `numpy==1.26.4`, `pillow`, `huggingface_hub`, `pandas`, `tqdm` — the small pure-Python deps from `requirements.txt`. This pass runs without `--upgrade` so the four packages above stay at the exact versions step 1–4 produced.
+The script:
 
-Runtime: `scan_receipt.py` and `check_models.py` detect that `onnxruntime` is importable and pass `enable_hpi=True, hpi_config={"backend": "onnxruntime"}` to `PaddleOCR(...)`. PaddleOCR converts the PP-OCRv5 weights to ONNX once on first instantiation and runs every subsequent inference through ONNX Runtime instead of `paddle_inference` — feature-parity and accuracy-parity per the upstream release notes.
+1. Locates a usable Python 3.11+ (PATH, then the `py` launcher: `py -3.13`, `-3.12`, `-3.11`).
+2. Creates a venv at `%LOCALAPPDATA%\com.monioc-app\venv`.
+3. Runs `pip install -r app/data/requirements.txt`. Per `sys_platform == "win32"` markers in `requirements.txt`, this resolves to:
+   - `paddlepaddle>=3.1.0`
+   - `paddleocr>=3.4.0`
+   - `onnxruntime>=1.18.0` + `paddle2onnx>=1.2.0` (Windows-only — enables PaddleOCR's High-Performance Inference path)
+   - `llama-cpp-python>=0.3.0` (CPU; for CUDA see the comment in `requirements.txt`)
+   - `numpy==1.26.4`, `pillow`, `pandas`, `tqdm`
+4. Pre-downloads PaddleOCR + LLM weights via `check_models.py --download` so first launch does not stall.
 
-LLM model: the GGUF default is **`bartowski/mistralai_Ministral-3-8B-Instruct-2512-GGUF`** (Q4_K_M, ~4.7 GB), the GGUF conversion of the same Ministral-3 8B Instruct checkpoint that the macOS MLX backend uses. Keeping both backends on the same checkpoint means receipt extraction quality is identical across platforms.
+If you want the same exact-version stack the previous bundled installer used, follow PaddleOCR's [v3.x installation guide](https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/installation.en.md) instead — pin `paddlepaddle==3.1.1` from the official Paddle CDN (`https://www.paddlepaddle.org.cn/packages/stable/cpu/`) and run `paddleocr install_hpi_deps cpu` for the HPI plugins. The default `requirements.txt` resolution works for most users; the pinned path is the upstream-supported reference matrix.
+
+LLM model: the GGUF default is **`bartowski/mistralai_Ministral-3-8B-Instruct-2512-GGUF`** (Q4_K_M, ~4.7 GB), the GGUF conversion of the same Ministral-3 8B Instruct checkpoint that the macOS MLX backend uses. Receipt extraction quality is therefore identical across platforms.
+
+Runtime: `scan_receipt.py` and `check_models.py` detect that `onnxruntime` is importable on Windows and pass `enable_hpi=True, hpi_config={"backend": "onnxruntime"}` to `PaddleOCR(...)`. PaddleOCR converts the PP-OCRv5 weights to ONNX once on first instantiation and runs every subsequent inference through ONNX Runtime instead of `paddle_inference`.
 
 Why ONNX Runtime on Windows specifically:
 
 - `paddle_inference`'s CPU operator coverage on Windows is incomplete — PaddlePaddle 3.0/3.1's PIR executor crashes mid-inference with `ConvertPirAttribute2RuntimeAttribute not supported`.
 - `onnxruntime` is Microsoft-native: no missing CPU operators, no DLL search-path surprises.
-- `onnxruntime` ships its own thread pool, so the libiomp5md.dll vs libomp140.x86_64.dll OpenMP collision that paddle/numpy/llama-cpp create in the same process becomes a non-issue.
-- Per the upstream release notes the OCR accuracy is identical.
+- `onnxruntime` ships its own thread pool, sidestepping the libiomp5md.dll vs libomp140.x86_64.dll OpenMP collision that paddle/numpy/llama-cpp create in the same process.
 
-Three flags are still set at install-smoke-test time and at runtime in `scan_receipt.py` / `check_models.py` for the cases where HPI is unavailable and we fall through to `paddle_inference`:
+Three flags are still set at runtime in `scan_receipt.py` / `check_models.py` for the cases where HPI is unavailable and we fall through to `paddle_inference`:
 
 | Flag | Purpose |
 |---|---|
 | `KMP_DUPLICATE_LIB_OK=TRUE` | Tolerate the duplicate OpenMP runtime that paddle, numpy/MKL, and llama-cpp each load — without it, the process aborts with `OMP: Error #15`. |
 | `FLAGS_enable_pir_api=0`, `FLAGS_enable_pir_in_executor=0` | Disable PaddlePaddle 3.x's PIR executor; PIR's CPU operator coverage is incomplete on Windows. |
 
-Both files also set `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8` because the embeddable Python defaults to cp1252 and HuggingFace Hub's progress lines are non-ASCII.
+Both files also set `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8` so HuggingFace Hub's non-ASCII progress lines render correctly under the default cp1252 console codepage.
 
 ---
 

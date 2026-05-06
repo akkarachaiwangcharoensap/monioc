@@ -68,6 +68,10 @@ jobs:
           path: Monioc.dmg
 
   # ── Windows (.exe) ───────────────────────────────────────────────────────────
+  # Mirrors the macOS job: the installer ships only the Tauri app + Python
+  # scripts.  End users provide their own Python 3.11+ and run
+  # `app/scripts/setup-python-deps.py` once to populate the venv at
+  # %LOCALAPPDATA%\com.monioc-app\venv that interpreter.rs resolves at runtime.
   windows:
     name: Build Windows
     runs-on: windows-latest
@@ -106,177 +110,9 @@ jobs:
         working-directory: app
         run: python3 scripts/build-grocery-db.py --force
 
-      # Bundle a self-contained Python 3.12 runtime with all AI dependencies
-      # pre-installed.  This is what gets shipped inside the .exe installer so
-      # users don't need Python on their system and the first launch doesn't
-      # have to download anything.
-      #
-      # Layout produced: app/src-tauri/python-runtime/
-      #   ├── python.exe                 (10 MB, embeddable)
-      #   ├── python312.dll, *.zip, ...
-      #   ├── python312._pth             (with `import site` enabled)
-      #   └── Lib/site-packages/         (paddleocr, paddlepaddle, llama-cpp-python, ...)
-      - name: Bundle Python runtime + AI dependencies
-        shell: pwsh
-        working-directory: app/src-tauri
-        env:
-          # Force pip to refuse source distributions for any package and use
-          # only prebuilt wheels.  Saves ~20 minutes of from-source builds and
-          # avoids needing Visual Studio + CMake on the runner.  Per-package
-          # overrides below remain authoritative for llama-cpp-python.
-          PIP_PREFER_BINARY: "1"
-          # The bundled python.exe will be invoked by Tauri at runtime with
-          # whatever encoding the user's locale defaults to.  Pinning UTF-8
-          # here too keeps the install logs readable when paddlepaddle or
-          # huggingface_hub print non-ASCII progress lines.
-          PYTHONUTF8: "1"
-          PYTHONIOENCODING: "utf-8"
-        run: |
-          $ErrorActionPreference = "Stop"
-          $ProgressPreference = "SilentlyContinue"
-          $PythonVersion = "3.12.7"
-          $EmbedUrl = "https://www.python.org/ftp/python/$PythonVersion/python-$PythonVersion-embed-amd64.zip"
-
-          Write-Host "Downloading Python $PythonVersion embeddable runtime..."
-          Invoke-WebRequest -Uri $EmbedUrl -OutFile python-embed.zip -UseBasicParsing
-          if (Test-Path python-runtime) { Remove-Item -Recurse -Force python-runtime }
-          Expand-Archive -Path python-embed.zip -DestinationPath python-runtime -Force
-          Remove-Item python-embed.zip
-
-          # Embeddable Python ships with `import site` commented out — uncomment
-          # so pip and our deps end up on sys.path.
-          $pthFile = Get-ChildItem -Path python-runtime -Filter "python*._pth" |
-              Select-Object -First 1
-          $content = Get-Content $pthFile.FullName
-          $content = $content -replace '^\s*#\s*import\s+site', 'import site'
-          Set-Content -Path $pthFile.FullName -Value $content
-
-          Write-Host "Bootstrapping pip..."
-          Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" `
-              -OutFile get-pip.py -UseBasicParsing
-          & .\python-runtime\python.exe get-pip.py --no-warn-script-location
-          Remove-Item get-pip.py
-
-          Write-Host "Installing AI dependencies (~500 MB)..."
-          & .\python-runtime\python.exe -m pip install --upgrade pip
-          if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed (exit $LASTEXITCODE)" }
-
-          # ── paddlepaddle: install per official PaddleOCR v3.x guide ───
-          # Source of truth:
-          #   https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/installation.en.md
-          # The v3.x Windows install spec is:
-          #   python -m pip install paddlepaddle==3.1.1 \
-          #       -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
-          # Pinned exact (not >=3.1.0): the CDN serves a single tested
-          # build per minor version and the PaddleOCR HPI plugins are
-          # qualified against that exact framework version.  Same number on
-          # PyPI is a different build that is missing parts of the
-          # paddle_inference runtime on Windows.
-          Write-Host "  Installing paddlepaddle==3.1.1 from official Paddle CDN..."
-          & .\python-runtime\python.exe -m pip install `
-              -i https://www.paddlepaddle.org.cn/packages/stable/cpu/ `
-              "paddlepaddle==3.1.1"
-          if ($LASTEXITCODE -ne 0) { throw "paddlepaddle CDN install failed (exit $LASTEXITCODE)" }
-
-          # ── paddleocr ────────────────────────────────────────────────
-          # The v3.x install guide installs paddleocr separately, *after*
-          # the framework.  No version pin in the guide — the latest
-          # paddleocr always supports the matching paddlepaddle minor.
-          Write-Host "  Installing paddleocr..."
-          & .\python-runtime\python.exe -m pip install paddleocr
-          if ($LASTEXITCODE -ne 0) { throw "paddleocr install failed (exit $LASTEXITCODE)" }
-
-          # ── PaddleOCR HPI plugins (v3.x official subcommand) ─────────
-          # The v3.x guide does NOT recommend `pip install onnxruntime
-          # paddle2onnx` directly.  Instead it provides a CLI that pulls in
-          # the exact ONNX Runtime + paddle2onnx + plugin glue that match
-          # the paddleocr/paddlepaddle versions installed above:
-          #   paddleocr install_hpi_deps cpu
-          # Using the subcommand keeps us inside the supported matrix and
-          # avoids version drift if upstream re-pins their HPI deps.
-          Write-Host "  Installing PaddleOCR HPI deps (CPU / onnxruntime)..."
-          & .\python-runtime\python.exe -m paddleocr install_hpi_deps cpu
-          if ($LASTEXITCODE -ne 0) { throw "paddleocr install_hpi_deps cpu failed (exit $LASTEXITCODE)" }
-
-          # ── llama-cpp-python: prebuilt CPU wheel from abetlen index ──
-          # llama-cpp-python does NOT publish prebuilt wheels on PyPI; pip
-          # falls back to a from-source build that needs scikit-build-core +
-          # Visual Studio + CMake and fails on the runner with:
-          #   BackendUnavailable: Cannot import 'scikit_build_core.build'
-          # The project hosts CPU wheels on their own GitHub Pages index.
-          # Two flags make pip actually use them:
-          #   --extra-index-url <url>     adds the wheel index to the search
-          #   --only-binary llama-cpp-python  refuses to fall back to sdist
-          #                                   for this package even if pip
-          #                                   thinks a newer sdist exists
-          Write-Host "  Installing llama-cpp-python from prebuilt CPU wheel..."
-          & .\python-runtime\python.exe -m pip install `
-              --only-binary llama-cpp-python `
-              --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu `
-              "llama-cpp-python>=0.3.0"
-          if ($LASTEXITCODE -ne 0) { throw "llama-cpp-python wheel install failed (exit $LASTEXITCODE)" }
-
-          # ── Final sweep: numpy / pillow / pandas / tqdm / hf-hub ─────
-          # paddlepaddle, paddleocr, onnxruntime, paddle2onnx and
-          # llama-cpp-python are already installed at the exact versions
-          # the v3.x guide and the abetlen index produced; pip without
-          # --upgrade defaults to leaving installed packages alone, so
-          # this pass only fills in the small pure-Python deps that
-          # requirements.txt declares.  The two index URLs are repeated
-          # defensively so a transitive resolve (e.g. paddleocr pulling a
-          # newer paddlepaddle on Windows) still goes to the right index.
-          Write-Host "  Filling in remaining dependencies (numpy/pillow/etc)..."
-          & .\python-runtime\python.exe -m pip install `
-              --only-binary llama-cpp-python `
-              --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu `
-              --extra-index-url https://www.paddlepaddle.org.cn/packages/stable/cpu/ `
-              -r ../data/requirements.txt
-          if ($LASTEXITCODE -ne 0) { throw "pip install failed (exit $LASTEXITCODE)" }
-
-          # Smoke-import the runtime stack so a broken bundle fails the build
-          # instead of shipping an installer that crashes on the user's
-          # machine.  KMP_DUPLICATE_LIB_OK + FLAGS_enable_pir_* mirror the
-          # runtime guards set at the top of scan_receipt.py /
-          # check_models.py — without them the import below aborts the
-          # runner with `OMP: Error #15` or PIR operator errors.
-          Write-Host "Smoke-testing AI runtime imports..."
-          $env:KMP_DUPLICATE_LIB_OK = "TRUE"
-          $env:FLAGS_enable_pir_api = "0"
-          $env:FLAGS_enable_pir_in_executor = "0"
-          # Single-line `python -c` — a here-string would collide with YAML
-          # block indentation.  The script imports every wheel we shipped,
-          # prints the resolved versions, and asserts that onnxruntime
-          # exposes the CPU execution provider (HPI refuses to start
-          # otherwise).
-          $smoke = "import paddle, paddleocr, llama_cpp, huggingface_hub, PIL, numpy, onnxruntime, paddle2onnx; " +
-                   "print('paddle', paddle.__version__); " +
-                   "print('paddleocr', paddleocr.__version__); " +
-                   "print('onnxruntime', onnxruntime.__version__); " +
-                   "print('paddle2onnx', paddle2onnx.__version__); " +
-                   "print('numpy', numpy.__version__); " +
-                   "providers = onnxruntime.get_available_providers(); " +
-                   "assert 'CPUExecutionProvider' in providers, providers; " +
-                   "print('onnxruntime EPs', providers)"
-          & .\python-runtime\python.exe -c $smoke
-          if ($LASTEXITCODE -ne 0) { throw "AI runtime smoke import failed (exit $LASTEXITCODE)" }
-
-          # Pre-compile bytecode so __pycache__ exists alongside .py files —
-          # otherwise Python tries to write to Program Files at runtime, which
-          # fails silently and slows every import.  -q keeps logs tidy; -f
-          # forces rebuild even if a stale .pyc exists.
-          Write-Host "Pre-compiling Python bytecode..."
-          & .\python-runtime\python.exe -m compileall -q -f .\python-runtime\Lib
-
-          Write-Host "Bundle size:"
-          $size = (Get-ChildItem -Recurse python-runtime |
-              Measure-Object -Property Length -Sum).Sum
-          "{0:N0} MB" -f ($size / 1MB)
-
       - name: Build app
         working-directory: app
         run: npx tauri build
-        env:
-          PYTHON: python3
 
       - name: Stage release asset
         shell: bash

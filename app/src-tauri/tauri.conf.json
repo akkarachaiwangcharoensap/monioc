@@ -51,8 +51,7 @@
       "scan_receipt.py": "scan_receipt.py",
       "categorize_items.py": "categorize_items.py",
       "check_models.py": "check_models.py",
-      "../data/requirements.txt": "requirements.txt",
-      "python-runtime": "python-runtime"
+      "../data/requirements.txt": "requirements.txt"
     }
   },
   "plugins": {

@@ -258,8 +258,7 @@ fn resolve_check_models_cmd(
         .path()
         .app_cache_dir()
         .map_err(|e| AppError::Path(e.to_string()))?;
-    let python_cmd =
-        crate::python::resolve(&script_path, Some(&app_cache_dir), Some(&resource_dir));
+    let python_cmd = crate::python::resolve(&script_path, Some(&app_cache_dir));
 
     Ok((python_cmd, script_str))
 }

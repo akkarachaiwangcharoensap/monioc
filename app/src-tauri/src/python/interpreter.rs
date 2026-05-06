@@ -21,28 +21,23 @@ const VENV_PYTHON_BINS: [&str; 2] = ["bin/python3", "bin/python"];
 ///   1. `RECEIPT_PYTHON` env var (explicit override)
 ///   2. Active `VIRTUAL_ENV` interpreter
 ///   3. `venv312` / `venv` directories in ancestors of `script_path` (up to 8)
-///   4. `<resource_dir>/python-runtime/python.exe` — Windows bundled runtime
-///      shipped by the installer (CI extracts python-3.12-embed-amd64 here and
-///      pre-installs all AI deps, so this is the production path on Windows)
-///   5. `<app_cache_dir>/venv[312]/...` — installer-managed venv (macOS / Linux)
-///   6. `"python3"` / `"python"` system fallback
+///   4. `<app_cache_dir>/venv[312]/...` — venv populated by
+///      `app/scripts/setup-python-deps.py`.  Path is identical on every
+///      platform, only the per-platform `app_cache_dir` differs:
+///        - macOS:   ~/Library/Caches/com.monioc-app/venv
+///        - Windows: %LOCALAPPDATA%/com.monioc-app/venv
+///        - Linux:   ~/.cache/com.monioc-app/venv
+///   5. `"python3"` / `"python"` system fallback
 ///
-/// In production the `.app` bundle places scripts at `Contents/Resources/`, whose
-/// ancestor chain contains no virtualenv.  Pass the Tauri `app_cache_dir`
-/// (`~/Library/Caches/<bundle-id>/` on macOS) so the installer-managed
-/// venv is found at step 5.  On Windows pass `resource_dir` so the bundled
-/// Python at step 4 is preferred over any system installation.
-pub fn resolve(
-    script_path: &Path,
-    app_cache_dir: Option<&Path>,
-    resource_dir: Option<&Path>,
-) -> String {
+/// In production the `.app` / `.exe` bundle places scripts at the platform
+/// resource directory, whose ancestor chain contains no virtualenv.  Pass the
+/// Tauri `app_cache_dir` so the user-managed venv is found at step 4.
+pub fn resolve(script_path: &Path, app_cache_dir: Option<&Path>) -> String {
     resolve_with_env(
         script_path,
         &std::env::var("RECEIPT_PYTHON").ok(),
         &std::env::var("VIRTUAL_ENV").ok(),
         app_cache_dir,
-        resource_dir,
     )
 }
 
@@ -53,7 +48,6 @@ pub(crate) fn resolve_with_env(
     receipt_python: &Option<String>,
     virtual_env: &Option<String>,
     app_cache_dir: Option<&Path>,
-    resource_dir: Option<&Path>,
 ) -> String {
     if let Some(explicit) = receipt_python.as_deref().filter(|s| !s.trim().is_empty()) {
         return explicit.to_string();
@@ -82,23 +76,9 @@ pub(crate) fn resolve_with_env(
         }
     }
 
-    // Windows production: the installer ships a self-contained Python runtime
-    // (python-3.12-embed-amd64 with all AI deps pre-installed) inside the
-    // resource directory.  Always prefer it over system Python so we never
-    // fall through to a user install that's missing paddleocr / paddlepaddle.
-    #[cfg(target_os = "windows")]
-    if let Some(res_dir) = resource_dir {
-        let p = res_dir.join("python-runtime").join("python.exe");
-        if p.exists() {
-            return p.to_string_lossy().into_owned();
-        }
-    }
-    #[cfg(not(target_os = "windows"))]
-    let _ = resource_dir;
-
-    // Production fallback: check the Tauri app-cache directory for a venv
-    // created by the installer / setup-python-deps script.
-    // On macOS this is ~/Library/Caches/<bundle-id>/venv[312].
+    // Production: check the Tauri app-cache directory for a venv created by
+    // `setup-python-deps.py`.  Same lookup on macOS, Windows, and Linux —
+    // the per-platform path is hidden behind Tauri's `app_cache_dir`.
     if let Some(data_dir) = app_cache_dir {
         for venv_dir in PROJECT_VENV_DIRS {
             for bin in VENV_PYTHON_BINS {
@@ -125,7 +105,6 @@ mod tests {
             &Some("/custom/python".to_string()),
             &Some("/venv".to_string()),
             None,
-            None,
         );
         assert_eq!(result, "/custom/python");
     }
@@ -137,7 +116,6 @@ mod tests {
             &Some("   ".to_string()),
             &None,
             None,
-            None,
         );
         let expected = if cfg!(target_os = "windows") { "python" } else { "python3" };
         assert_eq!(result, expected);
@@ -145,13 +123,7 @@ mod tests {
 
     #[test]
     fn fallback_is_platform_python() {
-        let result = resolve_with_env(
-            Path::new("/nowhere/script.py"),
-            &None,
-            &None,
-            None,
-            None,
-        );
+        let result = resolve_with_env(Path::new("/nowhere/script.py"), &None, &None, None);
         let expected = if cfg!(target_os = "windows") { "python" } else { "python3" };
         assert_eq!(result, expected);
     }
