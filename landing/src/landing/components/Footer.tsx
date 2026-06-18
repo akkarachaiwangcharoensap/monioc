@@ -1,6 +1,6 @@
 import type React from 'react';
 
-const GITHUB_URL = process.env.NEXT_PUBLIC_GITHUB_URL ?? 'https://github.com/your-org/monioc';
+const GITHUB_URL = process.env.NEXT_PUBLIC_GITHUB_URL ?? 'https://github.com/akkarachaiwangcharoensap/monioc';
 
 export default function Footer(): React.ReactElement {
 	return (

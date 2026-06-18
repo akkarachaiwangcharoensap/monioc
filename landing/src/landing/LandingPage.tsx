@@ -9,7 +9,7 @@ import { MockReceiptScannerPreview } from './pages/MockReceiptScannerPage';
 import { MockGroceryPricesPreview } from './pages/MockGroceryPricesPage';
 import { MockStatisticsPreview } from './pages/MockStatisticsPage';
 
-const GITHUB_URL = process.env.NEXT_PUBLIC_GITHUB_URL ?? 'https://github.com/your-org/monioc';
+const GITHUB_URL = process.env.NEXT_PUBLIC_GITHUB_URL ?? 'https://github.com/akkarachaiwangcharoensap/monioc';
 
 /* ── Realistic mockup visuals for scroll sections (matching Tauri app) ──── */
 
@@ -45,7 +45,7 @@ function OpenSourceSection(): React.ReactElement {
 							rel="noopener noreferrer"
 							className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-violet-600 hover:underline"
 						>
-							View on GitHub →
+							View on GitHub
 						</a>
 					</div>
 
@@ -64,7 +64,7 @@ function OpenSourceSection(): React.ReactElement {
 							rel="noopener noreferrer"
 							className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-emerald-600 hover:underline"
 						>
-							Statistics Canada open data →
+							Statistics Canada open data
 						</a>
 					</div>
 				</div>

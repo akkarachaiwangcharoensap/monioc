@@ -86,28 +86,22 @@ export default function Hero(): React.ReactElement {
 								<i className="fab fa-apple" aria-hidden="true" />
 							</span>
 							<p className="mt-2.5 text-xs font-semibold text-slate-900">macOS</p>
-							<p className="mt-1 text-[11px] font-medium text-violet-600">Download →</p>
+							<p className="mt-1 text-[11px] font-medium text-violet-600">Download</p>
 						</a>
-						<a
-							href={`${RELEASES_URL}/download/Monioc-setup.exe`}
-							className="group flex flex-col items-center rounded-[24px] border border-slate-200 bg-white px-3 py-4 text-center shadow-sm transition-shadow hover:shadow-md hover:border-slate-300"
-						>
-							<span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-50 text-[22px] text-slate-900 transition-colors group-hover:bg-violet-50 group-hover:text-violet-700">
+						<div className="flex flex-col items-center rounded-[24px] border border-slate-100 bg-slate-50 px-3 py-4 text-center opacity-50 cursor-not-allowed">
+							<span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-[22px] text-slate-400">
 								<i className="fab fa-windows" aria-hidden="true" />
 							</span>
-							<p className="mt-2.5 text-xs font-semibold text-slate-900">Windows</p>
-							<p className="mt-1 text-[11px] font-medium text-violet-600">Download →</p>
-						</a>
-						<a
-							href={`${RELEASES_URL}/download/monioc.AppImage`}
-							className="group flex flex-col items-center rounded-[24px] border border-slate-200 bg-white px-3 py-4 text-center shadow-sm transition-shadow hover:shadow-md hover:border-slate-300"
-						>
-							<span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-50 text-[22px] text-slate-900 transition-colors group-hover:bg-violet-50 group-hover:text-violet-700">
+							<p className="mt-2.5 text-xs font-semibold text-slate-400">Windows</p>
+							<p className="mt-1 text-[11px] font-medium text-slate-400">Coming soon</p>
+						</div>
+						<div className="flex flex-col items-center rounded-[24px] border border-slate-100 bg-slate-50 px-3 py-4 text-center opacity-50 cursor-not-allowed">
+							<span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-[22px] text-slate-400">
 								<i className="fab fa-linux" aria-hidden="true" />
 							</span>
-							<p className="mt-2.5 text-xs font-semibold text-slate-900">Linux</p>
-							<p className="mt-1 text-[11px] font-medium text-violet-600">Download →</p>
-						</a>
+							<p className="mt-2.5 text-xs font-semibold text-slate-400">Linux</p>
+							<p className="mt-1 text-[11px] font-medium text-slate-400">Coming soon</p>
+						</div>
 					</div>
 					<p className="text-[11px] text-slate-400">
 						Or{' '}
